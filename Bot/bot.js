@@ -1,16 +1,22 @@
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./database.sqlite');
+
 require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 client.once('ready', () => {
   console.log('🤖 Bot online');
 });
 
+// SLASH COMMAND
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -19,9 +25,28 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.login(process.env.TOKEN);
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+// PREFIX SYSTEM (BANCO 🔥)
+client.on('messageCreate', (message) => {
+  if (message.author.bot) return;
 
+  db.get(
+    `SELECT prefix FROM configs WHERE guild_id = ?`,
+    [message.guild.id],
+    (err, row) => {
+      const prefix = row?.prefix || '!';
+
+      if (!message.content.startsWith(prefix)) return;
+
+      if (message.content === prefix + 'ping') {
+        message.reply('pong (prefix)');
+      }
+    }
+  );
+});
+
+client.login(process.env.TOKEN);
+
+// REGISTRAR SLASH COMMANDS
 const commands = [
   new SlashCommandBuilder()
     .setName('ping')
