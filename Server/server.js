@@ -90,3 +90,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('🌐 Server rodando na porta ' + PORT);
 });
+app.post('/guild/:id', (req, res) => {
+  const { prefix } = req.body;
+  const guildId = req.params.id;
+
+  db.run(
+    `INSERT OR REPLACE INTO configs (guild_id, prefix) VALUES (?, ?)`,
+    [guildId, prefix],
+    () => {
+      res.send('✅ Config salva!');
+    }
+  );
+});
