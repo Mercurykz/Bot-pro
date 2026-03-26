@@ -17,10 +17,16 @@ const app = express();
 // ⚠️ importante pro form funcionar depois
 app.use(express.urlencoded({ extended: true }));
 
+app.set('trust proxy', 1); // MUITO IMPORTANTE
+
 app.use(session({
   secret: 'segredo',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    secure: true,
+    sameSite: 'none'
+  }
 }));
 
 app.use(passport.initialize());
