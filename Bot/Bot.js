@@ -1,5 +1,4 @@
 require('dotenv').config();
-client.login(process.env.TOKEN);
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
@@ -7,14 +6,14 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`🤖 Logado como ${client.user.tag}`);
+  console.log('🤖 Bot online');
 });
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'ping') {
-    await interaction.reply('🏓 Pong PRO!');
+    await interaction.reply('pong');
   }
 });
 
