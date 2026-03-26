@@ -14,7 +14,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// rota login
+// login
 app.get('/login', passport.authenticate('discord'));
 
 // callback
@@ -43,6 +43,9 @@ app.get('/', (req, res) => {
   res.send('<a href="/login">Login com Discord</a>');
 });
 
-app.listen(3000, () => {
-  console.log('🌐 Painel com login rodando');
+// ✅ correto
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log('🌐 Painel com login rodando na porta ' + PORT);
 });
