@@ -1,3 +1,13 @@
+const sqlite3 = require('sqlite3').verbose();
+
+const db = new sqlite3.Database('./database.sqlite');
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS configs (
+    guild_id TEXT PRIMARY KEY,
+    prefix TEXT
+  )
+`);
 const express = require('express');
 const session = require('express-session');
 const passport = require('./routes/auth');
