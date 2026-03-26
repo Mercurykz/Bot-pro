@@ -1,9 +1,11 @@
-
 const express = require('express');
 const session = require('express-session');
 const passport = require('./routes/auth');
 
 const app = express();
+
+// ⚠️ importante pro form funcionar depois
+app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
   secret: 'segredo',
@@ -28,21 +30,51 @@ app.get('/callback',
     failureRedirect: '/'
   }),
   (req, res) => {
-    res.redirect('/dashboard'); // 👉 vai pra dashboard
+    res.redirect('/dashboard');
   }
 );
 
-// DASHBOARD (AGORA EXISTE 🔥)
+// DASHBOARD
 app.get('/dashboard', (req, res) => {
   if (!req.user) return res.redirect('/');
 
+  const guilds = req.user.guilds
+    .filter(g => (g.permissions & 0x8) === 0x8);
+
   res.send(`
-    <h1>Logado como ${req.user.username}</h1>
-    <img src="https://cdn.discordapp.com/avatars/${req.user.id}/${req.user.avatar}.png"/>
-    <p>Login feito com sucesso ✅</p>
+    <h1>Bem-vindo ${req.user.username}</h1>
+    <h2>Seus servidores:</h2>
+    <ul>
+      ${guilds.map(g => `
+        <li>
+          <a href="/guild/${g.id}">${g.name}</a>
+        </li>
+      `).join('')}
+    </ul>
   `);
 });
 
+// ✅ ROTA CORRETA (fora do listen)
+app.get('/guild/:id', (req, res) => {
+  if (!req.user) return res.redirect('/');
+
+  const guild = req.user.guilds.find(g => g.id === req.params.id);
+
+  if (!guild) return res.send('Servidor não encontrado');
+
+  res.send(`
+    <h1>Configurar: ${guild.name}</h1>
+
+    <form method="POST" action="/guild/${guild.id}">
+      <label>Prefixo:</label>
+      <input name="prefix" placeholder="!"/>
+
+      <button type="submit">Salvar</button>
+    </form>
+  `);
+});
+
+// START
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
