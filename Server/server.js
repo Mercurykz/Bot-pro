@@ -2,8 +2,10 @@ const express = require('express');
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('🔥 Server online');
-});
+res.send(`
+  <h1>🚀 Painel do Bot</h1>
+  <a href="/login">Login com Discord</a>
+`);
 
 const PORT = process.env.PORT || 3000;
 
