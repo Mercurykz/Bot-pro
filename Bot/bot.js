@@ -65,5 +65,16 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     console.log('✅ Comandos registrados');
   } catch (error) {
     console.error(error);
+    if (interaction.commandName === 'presenca') {
+  const userId = interaction.user.id;
+  const guildId = interaction.guild.id;
+  const data = new Date().toISOString();
+
+  db.run(
+    `INSERT INTO presencas (user_id, guild_id, data) VALUES (?, ?, ?)`,
+    [userId, guildId, data]
+  );
+
+  await interaction.reply('✅ Presença registrada!');
   }
 })();
