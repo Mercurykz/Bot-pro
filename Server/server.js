@@ -136,10 +136,9 @@ app.get('/callback',
 // DASHBOARD
 app.get('/dashboard', (req, res) => {
   if (!req.user) return res.redirect('/');
+
   db.all(`
-    SELECT 
-      DATE(data) as dia,
-      COUNT(*) as total
+    SELECT DATE(data) as dia, COUNT(*) as total
     FROM presencas
     GROUP BY dia
     ORDER BY dia ASC
@@ -148,94 +147,161 @@ app.get('/dashboard', (req, res) => {
     const labels = rows.map(r => r.dia);
     const valores = rows.map(r => r.total);
 
-    res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    db.get(`SELECT COUNT(*) as total FROM presencas`, (err, totalGeral) => {
 
-      <style>
-        body {
-          margin: 0;
-          font-family: 'Segoe UI';
-          background: #0f172a;
-          color: white;
-          display: flex;
-        }
+      res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-        .sidebar {
-          width: 250px;
-          background: #020617;
-          height: 100vh;
-          padding: 20px;
-        }
+<style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: white;
+}
 
-        .content {
-          flex: 1;
-          padding: 30px;
-        }
+.light {
+  --bg: #f1f5f9;
+  --card: white;
+  --text: black;
+}
 
-        .card {
-          background: #1e293b;
-          padding: 20px;
-          border-radius: 12px;
-          margin-bottom: 20px;
-        }
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  transition: 0.3s;
+}
 
-        canvas {
-          background: white;
-          border-radius: 10px;
-          padding: 10px;
-        }
+.sidebar {
+  width: 250px;
+  background: #020617;
+  padding: 20px;
+}
 
-        .hero-img {
-          width: 300px;
-          margin-top: 20px;
-        }
-      </style>
-    </head>
+.content {
+  flex: 1;
+  padding: 30px;
+}
 
-    <body>
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
 
-      <div class="sidebar">
-        <h2>📊 Dashboard</h2>
-        <p>${req.user.username}</p>
-      </div>
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  transition: 0.3s;
+}
 
-      <div class="content">
+.card:hover {
+  transform: translateY(-5px);
+}
 
-        <h1>📈 Presenças por dia</h1>
+.grid {
+  display: flex;
+  gap: 20px;
+}
 
-        <div class="card">
-          <canvas id="chart"></canvas>
-        </div>
+.metric {
+  flex: 1;
+  text-align: center;
+}
 
-        <div class="card">
-          <h2>🚀 Seu sistema está online</h2>
-          <img class="hero-img" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"/>
-        </div>
+.metric h2 {
+  font-size: 30px;
+}
 
-      </div>
+button {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+</style>
+</head>
 
-      <script>
-        const ctx = document.getElementById('chart');
+<body>
 
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: ${JSON.stringify(labels)},
-            datasets: [{
-              label: 'Presenças',
-              data: ${JSON.stringify(valores)},
-              tension: 0.4
-            }]
-          }
-        });
-      </script>
+<div class="sidebar">
+  <h2>📊 Dashboard</h2>
+  <p>${req.user.username}</p>
+</div>
 
-    </body>
-    </html>
-    `);
+<div class="content">
+
+  <div class="topbar">
+    <h1>Visão Geral</h1>
+    <button onclick="toggleTheme()">🌙 / ☀️</button>
+  </div>
+
+  <div class="grid">
+
+    <div class="card metric">
+      <h2>${totalGeral.total}</h2>
+      <p>Total de Presenças</p>
+    </div>
+
+    <div class="card metric">
+      <h2>${valores[valores.length - 1] || 0}</h2>
+      <p>Hoje</p>
+    </div>
+
+  </div>
+
+  <div class="card">
+    <h2>📈 Presenças por dia</h2>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>🚀 Sistema ativo</h2>
+    <p>Seu SaaS está funcionando perfeitamente.</p>
+    <img width="200" src="https://cdn-icons-png.flaticon.com/512/906/906175.png"/>
+  </div>
+
+</div>
+
+<script>
+function toggleTheme() {
+  document.body.classList.toggle('light');
+}
+
+const ctx = document.getElementById('chart');
+
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: ${JSON.stringify(labels)},
+    datasets: [{
+      label: 'Presenças',
+      data: ${JSON.stringify(valores)},
+      tension: 0.4,
+      fill: true
+    }]
+  },
+  options: {
+    plugins: {
+      legend: { display: true }
+    }
+  }
+});
+</script>
+
+</body>
+</html>
+      `);
+    });
+
   });
 });
 // PÁGINA DO SERVIDOR
