@@ -18,145 +18,133 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // HOME
-app.get('/', (req, res) => {
+app.get('/dashboard', (req, res) => {
+  if (!req.user) return res.redirect('/');
+
+  const guilds = req.user.guilds
+    .filter(g => (g.permissions & 0x8) === 0x8);
+
   res.send(`
   <!DOCTYPE html>
-  <html lang="pt-BR">
+  <html>
   <head>
-    <meta charset="UTF-8">
-    <title>Sistema de Presença</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-        font-family: Arial, sans-serif;
-      }
-
       body {
-        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+        margin: 0;
+        font-family: 'Segoe UI';
+        display: flex;
+        transition: 0.3s;
+      }
+
+      body.dark {
+        background: #0f172a;
         color: white;
       }
 
-      header {
-        display: flex;
-        justify-content: space-between;
-        padding: 20px 60px;
-        align-items: center;
-      }
-
-      header h1 {
-        font-size: 20px;
-      }
-
-      nav a {
-        margin-left: 20px;
-        color: white;
-        text-decoration: none;
-        opacity: 0.8;
-      }
-
-      .hero {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 80px 60px;
-      }
-
-      .hero-text {
-        max-width: 500px;
-      }
-
-      .hero h2 {
-        font-size: 42px;
-        margin-bottom: 20px;
-      }
-
-      .hero p {
-        margin-bottom: 30px;
-        opacity: 0.9;
-      }
-
-      .btn {
-        background: #5865F2;
-        padding: 15px 30px;
-        border-radius: 10px;
-        color: white;
-        text-decoration: none;
-        font-weight: bold;
-        display: inline-block;
-      }
-
-      .cards {
-        display: flex;
-        justify-content: center;
-        gap: 20px;
-        padding: 40px;
+      body.light {
         background: #f1f5f9;
         color: black;
       }
 
-      .card {
-        background: white;
-        padding: 20px;
-        border-radius: 12px;
+      .sidebar {
         width: 250px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        height: 100vh;
+        background: #020617;
+        padding: 20px;
+        color: white;
       }
 
-      .card h3 {
-        margin-bottom: 10px;
+      .sidebar h2 {
+        color: #38bdf8;
       }
 
-      .illustration {
-        width: 500px;
+      .content {
+        flex: 1;
+        padding: 20px;
       }
 
+      .card {
+        background: #1e293b;
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        transition: 0.3s;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+      }
+
+      .toggle {
+        cursor: pointer;
+        margin-bottom: 20px;
+        display: inline-block;
+        padding: 8px 15px;
+        border-radius: 8px;
+        background: #38bdf8;
+        color: black;
+      }
+
+      a {
+        color: #38bdf8;
+        text-decoration: none;
+      }
+
+      canvas {
+        margin-top: 30px;
+        background: white;
+        border-radius: 10px;
+        padding: 10px;
+      }
     </style>
   </head>
 
-  <body>
+  <body class="dark">
 
-    <header>
-      <h1>✔ Sistema de Presença</h1>
-      <nav>
-        <a href="#">Sobre</a>
-        <a href="#">Contato</a>
-      </nav>
-    </header>
+    <div class="sidebar">
+      <h2>📊 Presença</h2>
+      <p>${req.user.username}</p>
+    </div>
 
-    <section class="hero">
-      <div class="hero-text">
-        <h2>Controle de Presença via Discord</h2>
-        <p>Gerencie a frequência dos alunos de forma fácil e automática.</p>
+    <div class="content">
 
-        <a class="btn" href="/login">
-          Login com Discord
-        </a>
-      </div>
+      <div class="toggle" onclick="toggleTheme()">🌙/☀️ Alternar tema</div>
 
-      <div>
-        <img class="illustration" src="https://cdn-icons-png.flaticon.com/512/906/906175.png"/>
-      </div>
-    </section>
+      <h1>Seus Servidores</h1>
 
-    <section class="cards">
-      <div class="card">
-        <h3>✔ Registro Rápido</h3>
-        <p>Marque presença com um comando no Discord.</p>
-      </div>
+      ${guilds.map(g => `
+        <div class="card">
+          <h3>${g.name}</h3>
+          <a href="/guild/${g.id}">Abrir</a>
+        </div>
+      `).join('')}
 
-      <div class="card">
-        <h3>📊 Painel Completo</h3>
-        <p>Visualize dados e relatórios em tempo real.</p>
-      </div>
+      <h2>📈 Estatísticas</h2>
+      <canvas id="chart"></canvas>
 
-      <div class="card">
-        <h3>📄 Relatórios</h3>
-        <p>Exporte e acompanhe frequência facilmente.</p>
-      </div>
-    </section>
+    </div>
+
+    <script>
+      function toggleTheme() {
+        document.body.classList.toggle('dark');
+        document.body.classList.toggle('light');
+      }
+
+      const ctx = document.getElementById('chart');
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'],
+          datasets: [{
+            label: 'Presenças',
+            data: [12, 19, 8, 15, 10],
+          }]
+        }
+      });
+    </script>
 
   </body>
   </html>
@@ -255,7 +243,7 @@ app.get('/guild/:id', (req, res) => {
       res.send(`
       <style>
         body {
-          font-family: Arial;
+          font-family: 'Segoe UI';
           background: #0f172a;
           color: white;
           padding: 20px;
@@ -271,15 +259,18 @@ app.get('/guild/:id', (req, res) => {
 
         th, td {
           padding: 12px;
-          border-bottom: 1px solid #334155;
         }
 
-        th {
-          background: #020617;
+        tr {
+          transition: 0.3s;
         }
 
         tr:hover {
           background: #334155;
+        }
+
+        th {
+          background: #020617;
         }
       </style>
 
@@ -298,7 +289,6 @@ app.get('/guild/:id', (req, res) => {
     }
   );
 });
-
 // START
 const PORT = process.env.PORT || 3000;
 
