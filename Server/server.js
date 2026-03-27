@@ -136,7 +136,6 @@ app.get('/callback',
 // DASHBOARD
 app.get('/dashboard', (req, res) => {
   if (!req.user) return res.redirect('/');
-<img src="https://cdn-icons-png.flaticon.com/512/906/906175.png" width="300">
   db.all(`
     SELECT 
       DATE(data) as dia,
