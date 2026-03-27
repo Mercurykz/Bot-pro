@@ -52,7 +52,9 @@ app.get('/callback',
 
 // DASHBOARD
 app.get('/dashboard', (req, res) => {
-  if (!req.user) return res.redirect('/');
+  if (!req.user) return res.redirect('/');}
+        
+  <a href="/guild/${g.id}/presencas">Ver Presenças</a>
 
   const guilds = req.user.guilds
     .filter(g => (g.permissions & 0x8) === 0x8);
