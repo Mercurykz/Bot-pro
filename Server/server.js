@@ -20,33 +20,146 @@ app.use(passport.session());
 // HOME
 app.get('/', (req, res) => {
   res.send(`
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial;
-      background: linear-gradient(135deg, #1e3a8a, #0f172a);
-      color: white;
-      text-align: center;
-      padding-top: 100px;
-    }
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <title>Sistema de Presença</title>
 
-    button {
-      background: #5865F2;
-      border: none;
-      padding: 15px 30px;
-      border-radius: 10px;
-      color: white;
-      font-size: 18px;
-      cursor: pointer;
-    }
-  </style>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: Arial, sans-serif;
+      }
 
-  <h1>🚀 Sistema de Presença</h1>
-  <p>Controle alunos via Discord</p>
+      body {
+        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+        color: white;
+      }
 
-  <a href="/login">
-    <button>Login com Discord</button>
-  </a>
+      header {
+        display: flex;
+        justify-content: space-between;
+        padding: 20px 60px;
+        align-items: center;
+      }
+
+      header h1 {
+        font-size: 20px;
+      }
+
+      nav a {
+        margin-left: 20px;
+        color: white;
+        text-decoration: none;
+        opacity: 0.8;
+      }
+
+      .hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 80px 60px;
+      }
+
+      .hero-text {
+        max-width: 500px;
+      }
+
+      .hero h2 {
+        font-size: 42px;
+        margin-bottom: 20px;
+      }
+
+      .hero p {
+        margin-bottom: 30px;
+        opacity: 0.9;
+      }
+
+      .btn {
+        background: #5865F2;
+        padding: 15px 30px;
+        border-radius: 10px;
+        color: white;
+        text-decoration: none;
+        font-weight: bold;
+        display: inline-block;
+      }
+
+      .cards {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        padding: 40px;
+        background: #f1f5f9;
+        color: black;
+      }
+
+      .card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        width: 250px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+      }
+
+      .card h3 {
+        margin-bottom: 10px;
+      }
+
+      .illustration {
+        width: 500px;
+      }
+
+    </style>
+  </head>
+
+  <body>
+
+    <header>
+      <h1>✔ Sistema de Presença</h1>
+      <nav>
+        <a href="#">Sobre</a>
+        <a href="#">Contato</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-text">
+        <h2>Controle de Presença via Discord</h2>
+        <p>Gerencie a frequência dos alunos de forma fácil e automática.</p>
+
+        <a class="btn" href="/login">
+          Login com Discord
+        </a>
+      </div>
+
+      <div>
+        <img class="illustration" src="https://cdn-icons-png.flaticon.com/512/906/906175.png"/>
+      </div>
+    </section>
+
+    <section class="cards">
+      <div class="card">
+        <h3>✔ Registro Rápido</h3>
+        <p>Marque presença com um comando no Discord.</p>
+      </div>
+
+      <div class="card">
+        <h3>📊 Painel Completo</h3>
+        <p>Visualize dados e relatórios em tempo real.</p>
+      </div>
+
+      <div class="card">
+        <h3>📄 Relatórios</h3>
+        <p>Exporte e acompanhe frequência facilmente.</p>
+      </div>
+    </section>
+
+  </body>
+  </html>
   `);
 });
 // LOGIN
