@@ -136,65 +136,108 @@ app.get('/callback',
 // DASHBOARD
 app.get('/dashboard', (req, res) => {
   if (!req.user) return res.redirect('/');
+<img src="https://cdn-icons-png.flaticon.com/512/906/906175.png" width="300">
+  db.all(`
+    SELECT 
+      DATE(data) as dia,
+      COUNT(*) as total
+    FROM presencas
+    GROUP BY dia
+    ORDER BY dia ASC
+  `, (err, rows) => {
 
-  const guilds = req.user.guilds
-    .filter(g => (g.permissions & 0x8) === 0x8);
+    const labels = rows.map(r => r.dia);
+    const valores = rows.map(r => r.total);
 
-  res.send(`
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial;
-      background: #0f172a;
-      color: white;
-      display: flex;
-    }
+    res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    .sidebar {
-      width: 250px;
-      background: #020617;
-      height: 100vh;
-      padding: 20px;
-    }
+      <style>
+        body {
+          margin: 0;
+          font-family: 'Segoe UI';
+          background: #0f172a;
+          color: white;
+          display: flex;
+        }
 
-    .sidebar h2 {
-      color: #38bdf8;
-    }
+        .sidebar {
+          width: 250px;
+          background: #020617;
+          height: 100vh;
+          padding: 20px;
+        }
 
-    .content {
-      flex: 1;
-      padding: 20px;
-    }
+        .content {
+          flex: 1;
+          padding: 30px;
+        }
 
-    .card {
-      background: #1e293b;
-      padding: 15px;
-      border-radius: 10px;
-      margin-bottom: 10px;
-    }
+        .card {
+          background: #1e293b;
+          padding: 20px;
+          border-radius: 12px;
+          margin-bottom: 20px;
+        }
 
-    a {
-      color: #38bdf8;
-      text-decoration: none;
-    }
-  </style>
+        canvas {
+          background: white;
+          border-radius: 10px;
+          padding: 10px;
+        }
 
-  <div class="sidebar">
-    <h2>📊 Dashboard</h2>
-    <p>${req.user.username}</p>
-  </div>
+        .hero-img {
+          width: 300px;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
 
-  <div class="content">
-    <h1>Seus servidores</h1>
+    <body>
 
-    ${guilds.map(g => `
-      <div class="card">
-        <h3>${g.name}</h3>
-        <a href="/guild/${g.id}">Abrir</a>
+      <div class="sidebar">
+        <h2>📊 Dashboard</h2>
+        <p>${req.user.username}</p>
       </div>
-    `).join('')}
-  </div>
-  `);
+
+      <div class="content">
+
+        <h1>📈 Presenças por dia</h1>
+
+        <div class="card">
+          <canvas id="chart"></canvas>
+        </div>
+
+        <div class="card">
+          <h2>🚀 Seu sistema está online</h2>
+          <img class="hero-img" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"/>
+        </div>
+
+      </div>
+
+      <script>
+        const ctx = document.getElementById('chart');
+
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(labels)},
+            datasets: [{
+              label: 'Presenças',
+              data: ${JSON.stringify(valores)},
+              tension: 0.4
+            }]
+          }
+        });
+      </script>
+
+    </body>
+    </html>
+    `);
+  });
 });
 // PÁGINA DO SERVIDOR
 app.get('/guild/:id', (req, res) => {
