@@ -18,133 +18,107 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // HOME
-app.get('/dashboard', (req, res) => {
-  if (!req.user) return res.redirect('/');
-
-  const guilds = req.user.guilds
-    .filter(g => (g.permissions & 0x8) === 0x8);
-
+app.get('/', (req, res) => {
   res.send(`
   <!DOCTYPE html>
-  <html>
+  <html lang="pt-BR">
   <head>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8">
+    <title>Sistema de Presença</title>
 
     <style>
-      body {
+      * {
         margin: 0;
-        font-family: 'Segoe UI';
+        padding: 0;
+        box-sizing: border-box;
+        font-family: Arial;
+      }
+
+      body {
+        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+        color: white;
+      }
+
+      header {
         display: flex;
-        transition: 0.3s;
+        justify-content: space-between;
+        padding: 20px 60px;
       }
 
-      body.dark {
-        background: #0f172a;
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 80px;
+      }
+
+      h1 {
+        font-size: 40px;
+      }
+
+      p {
+        margin: 20px 0;
+      }
+
+      .btn {
+        background: #5865F2;
+        padding: 15px 30px;
+        border-radius: 10px;
         color: white;
+        text-decoration: none;
+        font-weight: bold;
       }
 
-      body.light {
-        background: #f1f5f9;
+      .cards {
+        display: flex;
+        gap: 20px;
+        padding: 40px;
+        background: white;
         color: black;
-      }
-
-      .sidebar {
-        width: 250px;
-        height: 100vh;
-        background: #020617;
-        padding: 20px;
-        color: white;
-      }
-
-      .sidebar h2 {
-        color: #38bdf8;
-      }
-
-      .content {
-        flex: 1;
-        padding: 20px;
       }
 
       .card {
-        background: #1e293b;
-        padding: 15px;
+        background: #f1f5f9;
+        padding: 20px;
         border-radius: 12px;
-        margin-bottom: 15px;
-        transition: 0.3s;
-      }
-
-      .card:hover {
-        transform: translateY(-5px);
-      }
-
-      .toggle {
-        cursor: pointer;
-        margin-bottom: 20px;
-        display: inline-block;
-        padding: 8px 15px;
-        border-radius: 8px;
-        background: #38bdf8;
-        color: black;
-      }
-
-      a {
-        color: #38bdf8;
-        text-decoration: none;
-      }
-
-      canvas {
-        margin-top: 30px;
-        background: white;
-        border-radius: 10px;
-        padding: 10px;
+        flex: 1;
       }
     </style>
   </head>
 
-  <body class="dark">
+  <body>
 
-    <div class="sidebar">
-      <h2>📊 Presença</h2>
-      <p>${req.user.username}</p>
-    </div>
+    <header>
+      <h2>✔ Sistema de Presença</h2>
+    </header>
 
-    <div class="content">
+    <section class="hero">
+      <div>
+        <h1>Controle de Presença via Discord</h1>
+        <p>Gerencie alunos de forma simples e automática.</p>
 
-      <div class="toggle" onclick="toggleTheme()">🌙/☀️ Alternar tema</div>
+        <a href="/login" class="btn">
+          Login com Discord
+        </a>
+      </div>
+    </section>
 
-      <h1>Seus Servidores</h1>
+    <section class="cards">
+      <div class="card">
+        <h3>✔ Rápido</h3>
+        <p>Registro com comando no Discord</p>
+      </div>
 
-      ${guilds.map(g => `
-        <div class="card">
-          <h3>${g.name}</h3>
-          <a href="/guild/${g.id}">Abrir</a>
-        </div>
-      `).join('')}
+      <div class="card">
+        <h3>📊 Dashboard</h3>
+        <p>Visual moderno e dados em tempo real</p>
+      </div>
 
-      <h2>📈 Estatísticas</h2>
-      <canvas id="chart"></canvas>
-
-    </div>
-
-    <script>
-      function toggleTheme() {
-        document.body.classList.toggle('dark');
-        document.body.classList.toggle('light');
-      }
-
-      const ctx = document.getElementById('chart');
-
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'],
-          datasets: [{
-            label: 'Presenças',
-            data: [12, 19, 8, 15, 10],
-          }]
-        }
-      });
-    </script>
+      <div class="card">
+        <h3>📄 Relatórios</h3>
+        <p>Acompanhe presença facilmente</p>
+      </div>
+    </section>
 
   </body>
   </html>
