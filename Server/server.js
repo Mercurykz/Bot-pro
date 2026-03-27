@@ -108,3 +108,22 @@ app.post('/guild/:id', (req, res) => {
     }
   );
 });
+app.get('/guild/:id/presencas', (req, res) => {
+  const guildId = req.params.id;
+
+  db.all(
+    `SELECT * FROM presencas WHERE guild_id = ?`,
+    [guildId],
+    (err, rows) => {
+
+      const lista = rows.map(r => `
+        <li>${r.user_id} - ${r.data}</li>
+      `).join('');
+
+      res.send(`
+        <h1>Presenças</h1>
+        <ul>${lista}</ul>
+      `);
+    }
+  );
+});
