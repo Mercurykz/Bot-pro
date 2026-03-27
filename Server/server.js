@@ -20,108 +20,33 @@ app.use(passport.session());
 // HOME
 app.get('/', (req, res) => {
   res.send(`
-  <html>
-  <head>
-    <title>Sistema de Presença</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #0f172a, #1e3a8a);
-        color: white;
-      }
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: linear-gradient(135deg, #1e3a8a, #0f172a);
+      color: white;
+      text-align: center;
+      padding-top: 100px;
+    }
 
-      .container {
-        display: flex;
-        height: 100vh;
-        align-items: center;
-        justify-content: space-around;
-        padding: 40px;
-      }
+    button {
+      background: #5865F2;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
 
-      .left {
-        max-width: 500px;
-      }
+  <h1>🚀 Sistema de Presença</h1>
+  <p>Controle alunos via Discord</p>
 
-      h1 {
-        font-size: 42px;
-        margin-bottom: 20px;
-      }
-
-      p {
-        font-size: 18px;
-        color: #cbd5f5;
-      }
-
-      .btn {
-        display: inline-block;
-        margin-top: 30px;
-        padding: 15px 25px;
-        background: #5865F2;
-        color: white;
-        border-radius: 10px;
-        text-decoration: none;
-        font-size: 18px;
-        transition: 0.2s;
-      }
-
-      .btn:hover {
-        background: #4752c4;
-      }
-
-      .right {
-        text-align: center;
-      }
-
-      .card {
-        background: rgba(255,255,255,0.05);
-        padding: 20px;
-        border-radius: 15px;
-        margin: 10px;
-      }
-
-      .features {
-        display: flex;
-        gap: 20px;
-        margin-top: 40px;
-      }
-
-    </style>
-  </head>
-
-  <body>
-    <div class="container">
-
-      <div class="left">
-        <h1>📊 Controle de Presença via Discord</h1>
-        <p>Gerencie a frequência dos alunos de forma simples, rápida e automática.</p>
-
-        <a class="btn" href="/login">
-          🚀 Entrar com Discord
-        </a>
-
-        <div class="features">
-          <div class="card">
-            ⚡ Registro rápido
-          </div>
-
-          <div class="card">
-            📊 Dashboard completo
-          </div>
-
-          <div class="card">
-            📅 Histórico por dia
-          </div>
-        </div>
-      </div>
-
-      <div class="right">
-        <h2>💡 Simples. Rápido. Poderoso.</h2>
-      </div>
-
-    </div>
-  </body>
-  </html>
+  <a href="/login">
+    <button>Login com Discord</button>
+  </a>
   `);
 });
 // LOGIN
@@ -143,17 +68,34 @@ app.get('/dashboard', (req, res) => {
   res.send(`
   <style>
     body {
+      margin: 0;
       font-family: Arial;
       background: #0f172a;
       color: white;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 250px;
+      background: #020617;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    .sidebar h2 {
+      color: #38bdf8;
+    }
+
+    .content {
+      flex: 1;
       padding: 20px;
     }
 
     .card {
       background: #1e293b;
-      padding: 20px;
-      margin: 10px 0;
+      padding: 15px;
       border-radius: 10px;
+      margin-bottom: 10px;
     }
 
     a {
@@ -162,18 +104,23 @@ app.get('/dashboard', (req, res) => {
     }
   </style>
 
-  <h1>👋 ${req.user.username}</h1>
-  <h2>Seus servidores</h2>
+  <div class="sidebar">
+    <h2>📊 Dashboard</h2>
+    <p>${req.user.username}</p>
+  </div>
 
-  ${guilds.map(g => `
-    <div class="card">
-      <strong>${g.name}</strong><br>
-      <a href="/guild/${g.id}">Abrir painel</a>
-    </div>
-  `).join('')}
+  <div class="content">
+    <h1>Seus servidores</h1>
+
+    ${guilds.map(g => `
+      <div class="card">
+        <h3>${g.name}</h3>
+        <a href="/guild/${g.id}">Abrir</a>
+      </div>
+    `).join('')}
+  </div>
   `);
 });
-
 // PÁGINA DO SERVIDOR
 app.get('/guild/:id', (req, res) => {
   if (!req.user) return res.redirect('/');
@@ -204,16 +151,22 @@ app.get('/guild/:id', (req, res) => {
         table {
           width: 100%;
           border-collapse: collapse;
-          margin-top: 20px;
+          background: #1e293b;
+          border-radius: 10px;
+          overflow: hidden;
         }
 
-        td, th {
-          padding: 10px;
-          border-bottom: 1px solid #333;
+        th, td {
+          padding: 12px;
+          border-bottom: 1px solid #334155;
+        }
+
+        th {
+          background: #020617;
         }
 
         tr:hover {
-          background: #1e293b;
+          background: #334155;
         }
       </style>
 
