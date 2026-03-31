@@ -1599,6 +1599,14 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
       [req.user.id, name, subjectId]
     );
     const classId = result.rows[0].id;
+    
+    // Cria uma sessão automática para a sala recém-criada
+    await db.query(
+      `INSERT INTO class_sessions (class_id, start_time, active) VALUES ($1, NOW(), true)`,
+      [classId]
+    );
+    
+    console.log(`[DEBUG] Sala criada: ${name} (ID: ${classId}) com sessão automática`);
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
