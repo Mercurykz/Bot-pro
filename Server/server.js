@@ -31,19 +31,24 @@ app.use(express.urlencoded({ extended: true }));
       CREATE TABLE IF NOT EXISTS classes (
         id SERIAL PRIMARY KEY,
         professor_id TEXT REFERENCES users(id),
-        name TEXT NOT NULL,
-        active BOOLEAN NOT NULL DEFAULT true,
-        started_at TIMESTAMPTZ NOT NULL,
-        ended_at TIMESTAMPTZ
+        name TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS class_sessions (
+        id SERIAL PRIMARY KEY,
+        class_id INTEGER REFERENCES classes(id),
+        start_time TIMESTAMPTZ NOT NULL,
+        end_time TIMESTAMPTZ,
+        active BOOLEAN NOT NULL DEFAULT true
       );
 
       CREATE TABLE IF NOT EXISTS attendances (
         id SERIAL PRIMARY KEY,
-        class_id INTEGER REFERENCES classes(id),
+        class_session_id INTEGER REFERENCES class_sessions(id),
         student_id TEXT REFERENCES users(id),
         student_name TEXT,
         login_at TIMESTAMPTZ NOT NULL,
-        UNIQUE (class_id, student_id)
+        UNIQUE (class_session_id, student_id)
       );
     `);
 
@@ -118,17 +123,21 @@ app.get('/dashboard', async (req, res) => {
 
     const totalGeral = totalResult.rows[0] || { total: 0 };
 
-    const professorClasses = req.user.role === 'professor' ? await db.query(
-      `SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 ORDER BY started_at DESC`,
-      [req.user.id]
-    ) : null;
+    let professorClasses = null;
+    let activeRooms = new Set();
+
+    if (req.user.role === 'professor') {
+      professorClasses = await db.query(`SELECT id, name FROM classes WHERE professor_id = $1 ORDER BY id DESC`, [req.user.id]);
+      const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
+      activeRooms = new Set(activeSessions.rows.map(r => r.class_id));
+    }
 
     const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
-      `SELECT c.id, c.name, u.username as professor_name FROM classes c JOIN users u ON u.id = c.professor_id WHERE c.active = true ORDER BY c.started_at DESC`)
+      `SELECT DISTINCT c.id, c.name, u.username as professor_name FROM class_sessions s JOIN classes c ON c.id = s.class_id JOIN users u ON u.id = c.professor_id WHERE s.active = true ORDER BY s.start_time DESC`)
       : null;
 
     const classesHtml = req.user.role === 'professor'
-      ? professorClasses.rows.map(c => `<li><a href="/class/${c.id}">${c.name}</a> - ${c.active ? 'Ativa' : 'Encerrada'} - ${new Date(c.started_at).toLocaleString()}</li>`).join('')
+      ? professorClasses.rows.map(c => `<li><a href="/class/${c.id}">${c.name}</a> - ${activeRooms.has(c.id) ? 'Em chamada' : 'Disponível'}</li>`).join('')
       : (classesDisponiveis?.rows || []).map(c => `<li>${c.name} (Prof. ${c.professor_name}) <a href="/class/${c.id}">Entrar</a></li>`).join('');
 
     const classForm = req.user.role === 'professor'
@@ -369,14 +378,30 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
 
   try {
     const result = await db.query(
-      `INSERT INTO classes (professor_id, name, active, started_at) VALUES ($1, $2, true, NOW()) RETURNING id`,
+      `INSERT INTO classes (professor_id, name) VALUES ($1, $2) RETURNING id`,
       [req.user.id, name]
     );
     const classId = result.rows[0].id;
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao iniciar classe');
+    res.status(500).send('Erro ao criar sala');
+  }
+});
+
+app.post('/class/:id/start-session', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const classId = req.params.id;
+  try {
+    const classData = await db.query(`SELECT * FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+    if (!classData.rowCount) return res.status(404).send('Sala não encontrada');
+
+    await db.query(`UPDATE class_sessions SET active = false, end_time = NOW() WHERE class_id = $1 AND active = true`, [classId]);
+    await db.query(`INSERT INTO class_sessions (class_id, start_time, active) VALUES ($1, NOW(), true)`, [classId]);
+    res.redirect(`/class/${classId}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao iniciar sessão de chamada');
   }
 });
 
@@ -390,8 +415,12 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
   }
 
   try {
-    await db.query(`INSERT INTO attendances (class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (class_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
-      [classId, req.user.id, fullName]);
+    const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
+    if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
+
+    const sessionId = sessionRes.rows[0].id;
+    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (class_session_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
+      [sessionId, req.user.id, fullName]);
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
@@ -408,45 +437,52 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
     const classData = classRes.rows[0];
 
-    const attendances = await db.query(
-      `SELECT a.*, u.username FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY login_at ASC`,
-      [classId]
-    );
+    const sessionRes = await db.query(`SELECT * FROM class_sessions WHERE class_id = $1 ORDER BY start_time DESC LIMIT 1`, [classId]);
+    const activeSession = sessionRes.rowCount ? sessionRes.rows[0] : null;
 
-    const members = attendances.rows;
+    let members = [];
+    if (activeSession) {
+      const attendances = await db.query(
+        `SELECT a.*, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY login_at ASC`,
+        [activeSession.id]
+      );
+      members = attendances.rows;
+    }
 
-    // timeline do professor
+    // timeline de sessões do professor
     const timeline = await db.query(
-      `SELECT c.id, c.name, c.active, c.started_at, c.ended_at, COUNT(a.id) AS total_presencas
-       FROM classes c
-       LEFT JOIN attendances a ON a.class_id = c.id
-       WHERE c.professor_id = $1
-       GROUP BY c.id
-       ORDER BY c.started_at DESC`,
-       [classData.professor_id]
+      `SELECT s.id, s.start_time, s.end_time, s.active, COUNT(a.id) AS total_presencas
+       FROM class_sessions s
+       LEFT JOIN attendances a ON a.class_session_id = s.id
+       WHERE s.class_id = $1
+       GROUP BY s.id
+       ORDER BY s.start_time DESC`,
+       [classId]
     );
 
     res.send(`
       <h1>Sala de Aula: ${classData.name}</h1>
       <p>Professor: ${classData.professor_name}</p>
-      <p>Status: ${classData.active ? 'Ativa' : 'Encerrada'}</p>
+      <p>Status: ${activeSession && activeSession.active ? 'Em chamada' : 'Inativa'}</p>
       <h2>Presenças (Atualização a cada 5s)</h2>
       <ul id="attendance-list">
         ${members.map(m => `<li>${m.student_name || m.username} (${new Date(m.login_at).toLocaleString()})</li>`).join('')}
       </ul>
 
-      ${req.user.role === 'aluno' && classData.active ? `<form method="POST" action="/class/${classId}/join">
+      ${req.user.role === 'aluno' && activeSession && activeSession.active ? `<form method="POST" action="/class/${classId}/join">
         <label>Nome completo: <input name="fullName" required placeholder="Nome completo" /></label>
         <button>Registrar presença</button>
       </form>` : ''}
 
-      ${req.user.role === 'professor' && classData.active ? `<form method="POST" action="/class/${classId}/mark">
+      ${req.user.role === 'professor' && activeSession && activeSession.active ? `<form method="POST" action="/class/${classId}/mark">
         <label>Marcar presença por nome: <input name="fullName" required placeholder="Nome completo do aluno" /></label>
         <button>Marcar presença</button>
       </form>
       <form method="POST" action="/class/${classId}/end" style="margin-top: 10px;">
         <button>Encerrar chamada</button>
       </form>` : ''}
+
+      ${req.user.role === 'professor' && (!activeSession || !activeSession.active) ? `<form method="POST" action="/class/${classId}/start-session" style="margin-top: 10px;"><button>Iniciar chamada</button></form>` : ''}
 
       <h2>Timeline do professor</h2>
       <ul>
@@ -473,9 +509,13 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
+    const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
+    if (!sessionRes.rowCount) return res.json([]);
+
+    const sessionId = sessionRes.rows[0].id;
     const attendances = await db.query(
-      `SELECT u.username, a.student_name, a.login_at FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
-      [classId]
+      `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+      [sessionId]
     );
     res.json(attendances.rows);
   } catch (err) {
@@ -501,7 +541,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         const target = document.getElementById('result');
         if (!data.length) return target.innerHTML = '<p>Nenhuma chamada nessa data.</p>';
         target.innerHTML = '<h2>Salas</h2><ul>' + data.map(c =>
-          '<li>' + c.name + ' (' + (c.active ? 'Ativa' : 'Encerrada') + ') - <a href="/class/' + c.id + '">Abrir</a> - <a href="/chamadas/' + c.id + '/export?date=' + date + '&format=xlsx">Exportar XLSX</a></li>'
+          '<li>' + c.name + ' (' + new Date(c.start_time).toLocaleTimeString() + ') - <a href="/class/' + c.class_id + '">Abrir</a> - <a href="/chamadas/' + c.session_id + '/export?date=' + date + '&format=xlsx">Exportar XLSX</a></li>'
         ).join('') + '</ul>';
       });
     </script>
@@ -513,30 +553,34 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const date = req.params.date; // YYYY-MM-DD
   try {
-    const classes = await db.query(
-      `SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 AND DATE(started_at) = $2 ORDER BY started_at DESC`,
+    const sessions = await db.query(
+      `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+       FROM class_sessions s
+       JOIN classes c ON c.id = s.class_id
+       WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
+       ORDER BY s.start_time DESC`,
       [req.user.id, date]
     );
-    res.json(classes.rows);
+    res.json(sessions.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Falha ao listar chamadas' });
   }
 });
 
-app.get('/chamadas/:classId/export', ensureAuthenticated, ensureProfessor, async (req, res) => {
+app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).send('Erro: DB não conectado.');
-  const classId = req.params.classId;
+  const sessionId = req.params.sessionId;
   const date = req.query.date;
   try {
-    const classResult = await db.query(`SELECT id, name FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
-    if (!classResult.rowCount) return res.status(404).send('Classe não encontrada');
+    const sessionResult = await db.query(`SELECT s.id, s.class_id, c.name FROM class_sessions s JOIN classes c ON c.id = s.class_id WHERE s.id = $1`, [sessionId]);
+    if (!sessionResult.rowCount) return res.status(404).send('Sessão não encontrada');
 
-    const classData = classResult.rows[0];
+    const sessionData = sessionResult.rows[0];
 
     const attendances = await db.query(
-      `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
-      [classId]
+      `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+      [sessionId]
     );
 
     const rows = attendances.rows;
@@ -574,11 +618,19 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     let html = '<h1>Salas de Aula</h1>';
 
     if (req.user.role === 'professor') {
-      const classes = await db.query(`SELECT id, name, started_at FROM classes WHERE professor_id = $1 AND active = true ORDER BY started_at DESC`, [req.user.id]);
-      html += `<h2>Suas salas ativas</h2><ul>${classes.rows.map(c => `<li>${c.name} - <a href="/class/${c.id}">Abrir</a> <form method="POST" action="/class/${c.id}/end" style="display:inline"><button>Encerrar</button></form></li>`).join('')}</ul>`;
-      html += `<h3>Criar nova sala</h3><form method="POST" action="/class/start"><input name="name" required placeholder="Nome da sala"/><button>Iniciar chamada</button></form>`;
+      const rooms = await db.query(`SELECT id, name FROM classes WHERE professor_id = $1 ORDER BY id DESC`, [req.user.id]);
+      const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
+      const activeSet = new Set(activeSessions.rows.map(r => r.class_id));
+
+      html += `<h2>Salas</h2><ul>` + rooms.rows.map(r => {
+        const isActive = activeSet.has(r.id);
+        return `<li>${r.name} - ${isActive ? 'Em chamada' : 'Disponível'} - <a href="/class/${r.id}">Abrir</a>` +
+          (isActive ? ` <form method="POST" action="/class/${r.id}/end" style="display:inline"><button>Encerrar chamada</button></form>` : ` <form method="POST" action="/class/${r.id}/start-session" style="display:inline"><button>Iniciar chamada</button></form>`) +
+          `</li>`;
+      }).join('') + `</ul>`;
+      html += `<h3>Criar nova sala</h3><form method="POST" action="/class/start"><input name="name" required placeholder="Nome da sala"/><button>Criar sala</button></form>`;
     } else {
-      const classes = await db.query(`SELECT c.id, c.name, c.active, u.username AS professor_name FROM classes c JOIN users u ON u.id = c.professor_id WHERE c.active = true ORDER BY c.started_at DESC`);
+      const classes = await db.query(`SELECT c.id, c.name, u.username AS professor_name FROM class_sessions s JOIN classes c ON s.class_id = c.id JOIN users u ON c.professor_id = u.id WHERE s.active = true ORDER BY s.start_time DESC`);
       html += `<h2>Salas disponíveis</h2><ul>${classes.rows.map(c => `<li>${c.name} (Prof. ${c.professor_name}) - <a href="/class/${c.id}">Abrir</a></li>`).join('')}</ul>`;
     }
 
@@ -594,7 +646,7 @@ app.post('/class/:id/end', ensureAuthenticated, ensureProfessor, async (req, res
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
-    await db.query(`UPDATE classes SET active = false, ended_at = NOW() WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+    await db.query(`UPDATE class_sessions SET active = false, end_time = NOW() WHERE class_id = $1 AND active = true`, [classId]);
     res.redirect('/classes');
   } catch (err) {
     console.error(err);
@@ -610,10 +662,14 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
   if (!fullName) return res.status(400).send('Informe o nome completo do aluno para marcar presença.');
 
   try {
-    await db.query(`INSERT INTO attendances (class_id, student_id, student_name, login_at)
+    const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
+    if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
+
+    const sessionId = sessionRes.rows[0].id;
+    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at)
       VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (class_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
-      [classId, null, fullName]
+      ON CONFLICT (class_session_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
+      [sessionId, null, fullName]
     );
 
     res.redirect(`/class/${classId}`);
