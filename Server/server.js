@@ -960,6 +960,7 @@ canvas {
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout" class="logout">🚪 Sair</a></li>
@@ -1509,6 +1510,7 @@ app.get('/guild/:id', async (req, res) => {
       <li><a href="/dashboard">📊 Dashboard</a></li>
       <li><a href="/classes">🏫 Salas de Aula</a></li>
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
+      ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
@@ -1649,6 +1651,7 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
       <li><a href="/dashboard">📊 Dashboard</a></li>
       <li><a href="/classes">🏫 Salas de Aula</a></li>
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
+      ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
@@ -2105,6 +2108,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
@@ -2481,6 +2485,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/subjects">📚 Matérias</a></li>
     <li><a href="/chamadas">📋 Chamadas</a></li>
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
@@ -2914,6 +2919,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
