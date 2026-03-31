@@ -42,11 +42,13 @@ passport.use(new DiscordStrategy({
       }
 
       // Atualizar ou inserir no DB
-      await db.query(
-        `INSERT INTO users (id, username, role) VALUES ($1, $2, $3)
-         ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, role = EXCLUDED.role`,
-        [profile.id, profile.username, role]
-      );
+      if (db) {
+        await db.query(
+          `INSERT INTO users (id, username, role) VALUES ($1, $2, $3)
+           ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, role = EXCLUDED.role`,
+          [profile.id, profile.username, role]
+        );
+      }
 
       done(null, { ...profile, role });
     } catch (error) {

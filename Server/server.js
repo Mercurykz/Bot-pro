@@ -11,6 +11,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Cria tabelas básicas se não existirem
 (async function initDb() {
+  if (!db) {
+    console.error('DB não conectado. Configure DATABASE_URL.');
+    return;
+  }
   try {
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -79,6 +83,7 @@ app.get('/callback',
 // DASHBOARD
 app.get('/dashboard', async (req, res) => {
   if (!req.user) return res.redirect('/');
+  if (!db) return res.send('Erro: DB não conectado.');
 
   try {
 
@@ -283,6 +288,7 @@ new Chart(ctx, {
 // GUILD (AGORA COM POSTGRES)
 app.get('/guild/:id', async (req, res) => {
   if (!req.user) return res.redirect('/');
+  if (!db) return res.send('Erro: DB não conectado.');
 
   const guildId = req.params.id;
 
@@ -342,6 +348,7 @@ app.get('/profile', ensureAuthenticated, async (req, res) => {
 });
 
 app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
   const { name } = req.body;
   if (!name) return res.status(400).send('Nome da sala (classe) obrigatório');
 
@@ -359,6 +366,7 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
 });
 
 app.post('/class/:id/join', ensureAuthenticated, ensureAluno, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
     await db.query(`INSERT INTO attendances (class_id, student_id, login_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
@@ -371,6 +379,7 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, async (req, res) =
 });
 
 app.get('/class/:id', ensureAuthenticated, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
     const classRes = await db.query(`SELECT c.*, u.username AS professor_name FROM classes c JOIN users u ON c.professor_id = u.id WHERE c.id = $1`, [classId]);
@@ -427,6 +436,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 });
 
 app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
     const attendances = await db.query(
