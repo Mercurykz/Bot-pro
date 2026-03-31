@@ -574,8 +574,8 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     let html = '<h1>Salas de Aula</h1>';
 
     if (req.user.role === 'professor') {
-      const classes = await db.query(`SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 ORDER BY started_at DESC`, [req.user.id]);
-      html += `<h2>Suas salas</h2><ul>${classes.rows.map(c => `<li>${c.name} - ${c.active ? 'Ativa' : 'Encerrada'} - <a href="/class/${c.id}">Abrir</a> ${c.active ? `<form method="POST" action="/class/${c.id}/end" style="display:inline"><button>Encerrar</button></form>` :' '}</li>`).join('')}</ul>`;
+      const classes = await db.query(`SELECT id, name, started_at FROM classes WHERE professor_id = $1 AND active = true ORDER BY started_at DESC`, [req.user.id]);
+      html += `<h2>Suas salas ativas</h2><ul>${classes.rows.map(c => `<li>${c.name} - <a href="/class/${c.id}">Abrir</a> <form method="POST" action="/class/${c.id}/end" style="display:inline"><button>Encerrar</button></form></li>`).join('')}</ul>`;
       html += `<h3>Criar nova sala</h3><form method="POST" action="/class/start"><input name="name" required placeholder="Nome da sala"/><button>Iniciar chamada</button></form>`;
     } else {
       const classes = await db.query(`SELECT c.id, c.name, c.active, u.username AS professor_name FROM classes c JOIN users u ON u.id = c.professor_id WHERE c.active = true ORDER BY c.started_at DESC`);
