@@ -977,44 +977,400 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
        [classId]
     );
 
+    const statusBadge = activeSession && activeSession.active 
+      ? '<span class="status-badge active">🔴 Em Chamada</span>' 
+      : '<span class="status-badge inactive">⚫ Inativa</span>';
+
+    const attendanceList = members.map(m => `<li>
+      <div>
+        <strong>${m.student_name || m.username}</strong>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ ${new Date(m.login_at).toLocaleString('pt-BR')}</div>
+      </div>
+    </li>`).join('');
+
+    const timelineList = timeline.rows.map(t => `<li>
+      <div>
+        <strong>${new Date(t.start_time).toLocaleString('pt-BR')}</strong>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">👥 ${t.total_presencas} alunos</div>
+      </div>
+      <span class="status-badge ${t.active ? 'active' : 'inactive'}">${t.active ? '🟢 Ativa' : '⚫ Encerrada'}</span>
+    </li>`).join('');
+
     res.send(`
-      <h1>Sala de Aula: ${classData.name}</h1>
-      <p>Professor: ${classData.professor_name}</p>
-      <p>Status: ${activeSession && activeSession.active ? 'Em chamada' : 'Inativa'}</p>
-      <h2>Presenças (Atualização a cada 5s)</h2>
-      <ul id="attendance-list">
-        ${members.map(m => `<li>${m.student_name || m.username} (${new Date(m.login_at).toLocaleString()})</li>`).join('')}
-      </ul>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Sala - ${classData.name}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-      ${req.user.role === 'aluno' && activeSession && activeSession.active ? `<form method="POST" action="/class/${classId}/join">
-        <label>Nome completo: <input name="fullName" required placeholder="Nome completo" /></label>
-        <button>Registrar presença</button>
-      </form>` : ''}
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --danger: #ef4444;
+      --success: #10b981;
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+    }
 
-      ${req.user.role === 'professor' && activeSession && activeSession.active ? `<form method="POST" action="/class/${classId}/mark">
-        <label>Marcar presença por nome: <input name="fullName" required placeholder="Nome completo do aluno" /></label>
-        <button>Marcar presença</button>
-      </form>
-      <form method="POST" action="/class/${classId}/end" style="margin-top: 10px;">
-        <button>Encerrar chamada</button>
-      </form>` : ''}
+    .light {
+      --bg-dark: #f8fafc;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
 
-      ${req.user.role === 'professor' && (!activeSession || !activeSession.active) ? `<form method="POST" action="/class/${classId}/start-session" style="margin-top: 10px;"><button>Iniciar chamada</button></form>` : ''}
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
 
-      <h2>Timeline do professor</h2>
-      <ul>
-        ${timeline.rows.map(t => `<li>${new Date(t.start_time).toLocaleString()} - ${t.total_presencas} alunos - ${t.active ? 'Ativa' : 'Encerrada'}</li>`).join('')}
-      </ul>
-      <p><a href="/dashboard">Voltar ao dashboard</a></p>
-      <script>
-        async function refreshAttendance() {
-          const res = await fetch('/class/${classId}/attendees');
-          const data = await res.json();
-          const list = document.getElementById('attendance-list');
-          list.innerHTML = data.map(item => '<li>' + item.username + ' (' + new Date(item.login_at).toLocaleString() + ')</li>').join('');
-        }
-        setInterval(refreshAttendance, 5000);
-      </script>
+    body {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      height: 100vh;
+      position: fixed;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-menu {
+      list-style: none;
+    }
+
+    .nav-menu li {
+      margin-bottom: 10px;
+    }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-menu a:hover {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    .header {
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .header-meta {
+      display: flex;
+      gap: 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.active {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    .status-badge.inactive {
+      background: rgba(100, 116, 139, 0.2);
+      color: var(--text-muted);
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    li:last-child {
+      border-bottom: none;
+    }
+
+    form {
+      background: var(--bg-dark);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    form label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    form input {
+      padding: 12px 16px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-light);
+      border-radius: 8px;
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+    }
+
+    form input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, var(--danger), #dc2626);
+    }
+
+    .btn-danger:hover {
+      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--primary);
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: var(--border-color);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .content {
+        margin-left: 0;
+        padding: 20px;
+      }
+      form {
+        flex-direction: column;
+      }
+      .header h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Presença Plus</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="header">
+    <h1>${classData.name}</h1>
+    <div class="header-meta">
+      <span>👨‍🏫 Prof. ${classData.professor_name}</span>
+      <span>${statusBadge}</span>
+    </div>
+  </div>
+
+  ${req.user.role === 'professor' && (!activeSession || !activeSession.active) ? `<div class="card">
+    <form method="POST" action="/class/${classId}/start-session">
+      <button type="submit">▶️ Iniciar Chamada</button>
+    </form>
+  </div>` : ''}
+
+  <div class="card">
+    <h2>👥 Presenças Atuais</h2>
+    ${members.length > 0 ? `<ul id="attendance-list">${attendanceList}</ul>` : '<div class="empty-state"><p>Nenhuma presença registrada ainda</p></div>'}
+  </div>
+
+  ${req.user.role === 'aluno' && activeSession && activeSession.active ? `<div class="card">
+    <h2>✍️ Registrar Presença</h2>
+    <form method="POST" action="/class/${classId}/join">
+      <label>
+        Nome Completo
+        <input name="fullName" required placeholder="Digite seu nome completo" />
+      </label>
+      <button type="submit">Registrar</button>
+    </form>
+  </div>` : ''}
+
+  ${req.user.role === 'professor' && activeSession && activeSession.active ? `<div class="card">
+    <h2>📝 Marcar Presença por Nome</h2>
+    <form method="POST" action="/class/${classId}/mark">
+      <label>
+        Nome do Aluno
+        <input name="fullName" required placeholder="Digite o nome completo do aluno" />
+      </label>
+      <button type="submit">Marcar</button>
+    </form>
+    <form method="POST" action="/class/${classId}/end" style="margin-top: 12px;">
+      <button type="submit" class="btn-danger">🛑 Encerrar Chamada</button>
+    </form>
+  </div>` : ''}
+
+  ${timeline.rows.length > 0 ? `<div class="card">
+    <h2>📊 Histórico de Sessões</h2>
+    <ul>${timelineList}</ul>
+  </div>` : ''}
+
+  <a href="/classes" class="back-link">← Voltar às Salas</a>
+</div>
+
+<script>
+  async function refreshAttendance() {
+    try {
+      const res = await fetch('/class/${classId}/attendees');
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = document.getElementById('attendance-list');
+      if (!data.length) {
+        list.parentElement.innerHTML = '<div class="empty-state"><p>Nenhuma presença registrada ainda</p></div>';
+        return;
+      }
+      list.innerHTML = data.map(item => \`<li>
+        <div>
+          <strong>\${item.student_name || item.username}</strong>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${new Date(item.login_at).toLocaleString('pt-BR')}</div>
+        </div>
+      </li>\`).join('');
+    } catch (e) {
+      console.error('Erro ao atualizar:', e);
+    }
+  }
+  
+  if (document.getElementById('attendance-list')) {
+    setInterval(refreshAttendance, 5000);
+  }
+</script>
+
+</body>
+</html>
     `);
   } catch (err) {
     console.error(err);
