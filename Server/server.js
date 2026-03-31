@@ -28,9 +28,15 @@ app.use(express.urlencoded({ extended: true }));
         role TEXT NOT NULL DEFAULT 'aluno'
       );
 
+      CREATE TABLE IF NOT EXISTS subjects (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE
+      );
+
       CREATE TABLE IF NOT EXISTS classes (
         id SERIAL PRIMARY KEY,
         professor_id TEXT REFERENCES users(id),
+        subject_id INTEGER REFERENCES subjects(id),
         name TEXT NOT NULL
       );
 
@@ -53,6 +59,7 @@ app.use(express.urlencoded({ extended: true }));
     `);
 
     // Garante colunas do novo modelo de sessão
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS subject_id INTEGER REFERENCES subjects(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
@@ -887,19 +894,59 @@ app.get('/profile', ensureAuthenticated, async (req, res) => {
 
 app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
-  const { name } = req.body;
+  const { name, subject_id } = req.body;
   if (!name) return res.status(400).send('Nome da sala (classe) obrigatório');
 
   try {
+    // Opcional: verificar se subject_id é válido
+    let subjectId = subject_id ? parseInt(subject_id, 10) : null;
+    if (subjectId) {
+      const subjectRes = await db.query('SELECT id FROM subjects WHERE id = $1', [subjectId]);
+      if (!subjectRes.rowCount) subjectId = null;
+    }
+
     const result = await db.query(
-      `INSERT INTO classes (professor_id, name) VALUES ($1, $2) RETURNING id`,
-      [req.user.id, name]
+      `INSERT INTO classes (professor_id, name, subject_id) VALUES ($1, $2, $3) RETURNING id`,
+      [req.user.id, name, subjectId]
     );
     const classId = result.rows[0].id;
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao criar sala');
+  }
+});
+
+app.get('/subjects', ensureAuthenticated, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    const subjectsRes = await db.query('SELECT * FROM subjects ORDER BY name');
+    const rows = subjectsRes.rows.map(s => `<li>${s.name}</li>`).join('');
+    res.send(`
+      <!doctype html>
+      <html lang="pt-BR"><head><meta charset="utf-8"><title>Matérias</title></head><body>
+      <h1>Matérias</h1>
+      <ul>${rows || '<li>Nenhuma matéria cadastrada</li>'}</ul>
+      <form method="POST" action="/subject/create"><input name="name" placeholder="Nova matéria" required /><button type="submit">Criar Matéria</button></form>
+      <a href="/classes">Voltar às Salas</a>
+      </body></html>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar matérias');
+  }
+});
+
+app.post('/subject/create', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const { name } = req.body;
+  if (!name) return res.status(400).send('Nome da matéria obrigatório');
+  try {
+    await db.query('INSERT INTO subjects (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name.trim()]);
+    res.redirect('/subjects');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao criar matéria');
   }
 });
 
@@ -957,7 +1004,13 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
-    const classRes = await db.query(`SELECT c.*, u.username AS professor_name FROM classes c JOIN users u ON c.professor_id = u.id WHERE c.id = $1`, [classId]);
+    const classRes = await db.query(`
+      SELECT c.*, u.username AS professor_name, s.name AS subject_name
+      FROM classes c
+      JOIN users u ON c.professor_id = u.id
+      LEFT JOIN subjects s ON c.subject_id = s.id
+      WHERE c.id = $1
+    `, [classId]);
     if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
 
     const classData = classRes.rows[0];
@@ -1303,6 +1356,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     <h1>${classData.name}</h1>
     <div class="header-meta">
       <span>👨‍🏫 Prof. ${classData.professor_name}</span>
+      <span>📘 ${classData.subject_name || 'Sem matéria'}</span>
       <span>${statusBadge}</span>
     </div>
   </div>
@@ -1796,17 +1850,28 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
     if (req.user.role === 'professor') {
-      const rooms = await db.query(`SELECT id, name FROM classes WHERE professor_id = $1 ORDER BY id DESC`, [req.user.id]);
+      const subjectsRes = await db.query('SELECT id, name FROM subjects ORDER BY name');
+      const subjectOptions = subjectsRes.rows.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+      const rooms = await db.query(`
+        SELECT c.id, c.name, c.subject_id, s.name AS subject_name
+        FROM classes c
+        LEFT JOIN subjects s ON c.subject_id = s.id
+        WHERE c.professor_id = $1
+        ORDER BY c.id DESC
+      `, [req.user.id]);
+
       const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
       const activeSet = new Set(activeSessions.rows.map(r => r.class_id));
 
       const roomsList = rooms.rows.map(r => {
         const isActive = activeSet.has(r.id);
         const statusBadge = isActive ? '<span class="badge badge-active">🔴 Em Chamada</span>' : '<span class="badge badge-inactive">⚪ Disponível</span>';
+        const subjectBadge = r.subject_name ? `<span style="color: #93c5fd; font-size: 12px;">📘 ${r.subject_name}</span>` : '<span style="color: #94a3b8; font-size: 12px;">📘 Sem matéria</span>';
         return `<li>
           <div>
             <strong>${r.name}</strong>
-            <div style="margin-top: 8px;">${statusBadge}</div>
+            <div style="margin-top: 8px;">${subjectBadge} ${statusBadge}</div>
           </div>
           <div style="display: flex; gap: 8px;">
             <a href="/class/${r.id}">Abrir</a>
@@ -2104,8 +2169,13 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <h2>➕ Criar Nova Sala</h2>
     <form method="POST" action="/class/start">
       <input name="name" required placeholder="Nome da sala" />
+      <select name="subject_id">
+        <option value="">Sem matéria</option>
+        ${subjectOptions || ''}
+      </select>
       <button type="submit">Criar Sala</button>
     </form>
+    <p style="margin-top:10px;color:var(--text-muted);font-size:13px;">Gerencie matérias em <a href="/subjects" style='color:var(--primary);'>/subjects</a>.</p>
   </div>
 
   <div class="card">
@@ -2121,12 +2191,20 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
       `;
       res.send(html);
     } else {
-      const classes = await db.query(`SELECT c.id, c.name, u.username AS professor_name FROM class_sessions s JOIN classes c ON s.class_id = c.id JOIN users u ON c.professor_id = u.id WHERE s.active = true ORDER BY s.start_time DESC`);
+      const classes = await db.query(`
+        SELECT c.id, c.name, c.subject_id, s.name AS subject_name, u.username AS professor_name
+        FROM class_sessions cs
+        JOIN classes c ON cs.class_id = c.id
+        JOIN users u ON c.professor_id = u.id
+        LEFT JOIN subjects s ON c.subject_id = s.id
+        WHERE cs.active = true
+        ORDER BY cs.start_time DESC
+      `);
       
       const classList = classes.rows.map(c => `<li>
         <div>
           <strong>${c.name}</strong>
-          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">👨‍🏫 Prof. ${c.professor_name}</div>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">👨‍🏫 Prof. ${c.professor_name} • 📘 ${c.subject_name || 'Sem matéria'}</div>
         </div>
         <a href="/class/${c.id}">Entrar</a>
       </li>`).join('');
