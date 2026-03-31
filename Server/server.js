@@ -667,15 +667,17 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
     if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
 
     const sessionId = sessionRes.rows[0].id;
-    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (class_session_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
-      [sessionId, null, fullName]
-    );
+
+    const existing = await db.query(`SELECT id FROM attendances WHERE class_session_id = $1 AND student_name = $2 LIMIT 1`, [sessionId, fullName]);
+    if (existing.rowCount) {
+      await db.query(`UPDATE attendances SET login_at = NOW() WHERE id = $1`, [existing.rows[0].id]);
+    } else {
+      await db.query(`INSERT INTO attendances (class_session_id, student_name, login_at) VALUES ($1, $2, NOW())`, [sessionId, fullName]);
+    }
 
     res.redirect(`/class/${classId}`);
   } catch (err) {
-    console.error(err);
+    console.error('Erro ao marcar presença por nome:', err);
     res.status(500).send('Erro ao registrar presença por nome');
   }
 });
