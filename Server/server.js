@@ -2775,7 +2775,8 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
       margin-bottom: 0;
     }
 
-    form input {
+    form input,
+    form select {
       flex: 1;
       padding: 12px 16px;
       background: var(--bg-dark);
@@ -2785,10 +2786,39 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
       font-family: 'Poppins', sans-serif;
     }
 
-    form input:focus {
+    form select {
+      min-width: 210px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+        linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 3px),
+        calc(100% - 12px) calc(50% - 3px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+    }
+
+    form select:hover {
+      border-color: var(--primary);
+      background-color: rgba(99, 102, 241, 0.08);
+    }
+
+    form input:focus,
+    form select:focus {
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    form select option {
+      background: var(--card-dark);
+      color: var(--text-light);
     }
 
     button, .btn-danger {

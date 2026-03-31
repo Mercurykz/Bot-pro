@@ -1,0 +1,19 @@
+{
+  "name": "bot-pro-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Workspace do Bot + Server (Presença Plus)",
+  "workspaces": [
+    "Bot",
+    "Server"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "start:server": "npm --prefix Server start",
+    "start:bot": "npm --prefix Bot start",
+    "start:all": "npm run start:server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
