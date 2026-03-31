@@ -4,6 +4,7 @@ const session = require('express-session');
 const passport = require('./auth');
 const db = require('./database');
 
+const XLSX = require('xlsx');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -500,7 +501,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         const target = document.getElementById('result');
         if (!data.length) return target.innerHTML = '<p>Nenhuma chamada nessa data.</p>';
         target.innerHTML = '<h2>Salas</h2><ul>' + data.map(c =>
-          '<li>' + c.name + ' (' + (c.active ? 'Ativa' : 'Encerrada') + ') - <a href="/class/' + c.id + '">Abrir</a> - <a href="/chamadas/' + c.id + '/export?date=' + date + '">Exportar Excel</a></li>'
+          '<li>' + c.name + ' (' + (c.active ? 'Ativa' : 'Encerrada') + ') - <a href="/class/' + c.id + '">Abrir</a> - <a href="/chamadas/' + c.id + '/export?date=' + date + '&format=xlsx">Exportar XLSX</a></li>'
         ).join('') + '</ul>';
       });
     </script>
@@ -539,11 +540,28 @@ app.get('/chamadas/:classId/export', ensureAuthenticated, ensureProfessor, async
     );
 
     const rows = attendances.rows;
-    const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
 
-    res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
-    res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.csv"`);
-    res.send(csv);
+    if (req.query.format === 'xlsx') {
+      const sheetData = rows.map(r => ({
+        Nome: r.student_name,
+        Discord: r.discord_username,
+        'Data/Hora': new Date(r.login_at).toLocaleString()
+      }));
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(sheetData);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamadas');
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.xlsx"`);
+      res.send(buffer);
+    } else {
+      const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.csv"`);
+      res.send(csv);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao exportar chamada');
