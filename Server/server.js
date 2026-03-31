@@ -2551,11 +2551,12 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
       border-bottom: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       background: var(--bg-dark);
       border-radius: 8px;
       margin-bottom: 8px;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     li:last-child {
@@ -2685,9 +2686,9 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
           <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${dateLabel}</div>
           <div style="margin-top: 6px;">\${status}</div>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <a href="/class/\${session.class_id}">Abrir</a>
-          <a href="/chamadas/\${session.session_id}/export?date=\${exportDate}&format=xlsx">📥 Exportar</a>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <a href="/class/\${session.class_id}" style="padding: 8px 12px; background: var(--card-dark); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px;">📂 Abrir</a>
+          <a href="/chamadas/\${session.session_id}/export?date=\${exportDate}&format=xlsx" style="padding: 8px 12px; background: linear-gradient(135deg, #10b981, #059669); border-radius: 6px; color: white; font-size: 12px; border: none;">📥 Baixar</a>
           \${reopenBtn}
         </div>
       </li>\`;
