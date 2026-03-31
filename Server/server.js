@@ -1730,17 +1730,17 @@ app.post('/class/:id/start-session', ensureAuthenticated, ensureProfessor, async
 });
 
 app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded({ extended: true }), async (req, res) => {
-  if (!db) return res.send('Erro: DB não conectado.');
+  if (!db) return res.json({ success: false, error: 'DB não conectado' });
   const classId = req.params.id;
   const fullName = req.body.fullName?.trim();
 
   if (!fullName) {
-    return res.status(400).send('Informe seu nome completo para registrar presença.');
+    return res.status(400).json({ success: false, error: 'Informe seu nome completo para registrar presença.' });
   }
 
   try {
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
-    if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
+    if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
 
@@ -1748,18 +1748,30 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
     if (existing.rowCount) {
       const currentName = existing.rows[0].student_name || '';
       if (currentName.trim() !== fullName) {
-        return res.status(400).send(`Presença já registrada com o nome '${currentName}'. Não é possível trocar para '${fullName}' nesta chamada.`);
+        return res.status(400).json({ 
+          success: false, 
+          error: 'already_registered',
+          message: `Você não pode registrar presença pois já registrou com o nome '${currentName}'` 
+        });
       }
-      return res.redirect(`/class/${classId}`);
+      return res.json({ success: true, message: 'Presença já registrada' });
     }
 
     await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
       [sessionId, req.user.id, fullName]);
 
-    res.redirect(`/class/${classId}`);
+    res.json({ success: true, message: 'Presença registrada com sucesso' });
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao registrar presença');
+    // Erro de chave duplicada (outro aluno com o mesmo nome)
+    if (err.code === '23505' && err.constraint === 'attendances_class_session_name_idx') {
+      return res.status(400).json({
+        success: false,
+        error: 'duplicate_name',
+        message: 'Este nome já foi registrado nesta chamada. Você não pode se registrar com um nome já utilizado.'
+      });
+    }
+    res.status(500).json({ success: false, error: 'Erro ao registrar presença' });
   }
 });
 
@@ -2138,10 +2150,10 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
   ${req.user.role === 'aluno' && activeSession && activeSession.active ? `<div class="card">
     <h2>✍️ Registrar Presença</h2>
-    <form method="POST" action="/class/${classId}/join">
+    <form id="attendance-form">
       <label>
         Nome Completo
-        <input name="fullName" required placeholder="Digite seu nome completo" />
+        <input id="fullName-input" name="fullName" required placeholder="Digite seu nome completo" />
       </label>
       <button type="submit">Registrar</button>
     </form>
@@ -2149,10 +2161,10 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
   ${req.user.role === 'professor' && activeSession && activeSession.active ? `<div class="card">
     <h2>📝 Marcar Presença por Nome</h2>
-    <form method="POST" action="/class/${classId}/mark">
+    <form id="mark-attendance-form">
       <label>
         Nome do Aluno
-        <input name="fullName" required placeholder="Digite o nome completo do aluno" />
+        <input id="mark-fullName-input" name="fullName" required placeholder="Digite o nome completo do aluno" />
       </label>
       <button type="submit">Marcar</button>
     </form>
@@ -2170,6 +2182,129 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 </div>
 
 <script>
+  // Modal de erro de presença
+  const modal = document.createElement('div');
+  modal.id = 'attendance-error-modal';
+  modal.style.cssText = \`
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+  \`;
+  modal.innerHTML = \`
+    <div style="background: var(--bg-secondary); padding: 32px; border-radius: 12px; max-width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+      <div id="modal-icon" style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+      <h2 id="modal-title" style="margin: 0 0 12px 0; color: var(--text-primary);">Erro</h2>
+      <p id="modal-message" style="margin: 0 0 24px 0; color: var(--text-secondary); line-height: 1.5;"></p>
+      <button onclick="document.getElementById('attendance-error-modal').style.display = 'none'" style="padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Entendi</button>
+    </div>
+  \`;
+  document.body.appendChild(modal);
+
+  function showErrorModal(title, message, icon = '⚠️') {
+    document.getElementById('modal-icon').textContent = icon;
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-message').textContent = message;
+    modal.style.display = 'flex';
+  }
+
+  // Fechar modal ao clicar fora
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
+
+  // Formulário de presença via AJAX
+  const attendanceForm = document.getElementById('attendance-form');
+  if (attendanceForm) {
+    attendanceForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const fullName = document.getElementById('fullName-input').value;
+      
+      try {
+        const response = await fetch('/class/${classId}/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'fullName=' + encodeURIComponent(fullName)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showErrorModal('✅ Sucesso!', 'Sua presença foi registrada com sucesso!', '✅');
+          attendanceForm.reset();
+          refreshAttendance();
+          setTimeout(() => { modal.style.display = 'none'; }, 2000);
+        } else {
+          if (data.error === 'duplicate_name') {
+            showErrorModal(
+              '❌ Nome Duplicado',
+              'Este nome já foi registrado nesta chamada. Você não pode se registrar com um nome já utilizado por outro aluno.',
+              '❌'
+            );
+          } else if (data.error === 'already_registered') {
+            showErrorModal(
+              '⚠️ Já Registrado',
+              data.message,
+              '⚠️'
+            );
+          } else {
+            showErrorModal('❌ Erro', data.error || 'Erro ao registrar presença', '❌');
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        showErrorModal('❌ Erro', 'Erro ao registrar presença. Tente novamente.', '❌');
+      }
+    });
+  }
+
+  // Formulário do professor para marcar presença
+  const markAttendanceForm = document.getElementById('mark-attendance-form');
+  if (markAttendanceForm) {
+    markAttendanceForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const fullName = document.getElementById('mark-fullName-input').value;
+      
+      try {
+        const response = await fetch('/class/${classId}/mark', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'fullName=' + encodeURIComponent(fullName)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showErrorModal('✅ Presença Marcada!', 'Presença do aluno foi registrada com sucesso!', '✅');
+          markAttendanceForm.reset();
+          refreshAttendance();
+          setTimeout(() => { modal.style.display = 'none'; }, 2000);
+        } else {
+          if (data.error === 'duplicate_name') {
+            showErrorModal(
+              '⚠️ Já Registrado',
+              'Este aluno já teve sua presença marcada nesta chamada.',
+              '⚠️'
+            );
+          } else {
+            showErrorModal('❌ Erro', data.error || data.message || 'Erro ao marcar presença', '❌');
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        showErrorModal('❌ Erro', 'Erro ao marcar presença. Tente novamente.', '❌');
+      }
+    });
+  }
+
   async function refreshAttendance() {
     try {
       const res = await fetch('/class/${classId}/attendees');
@@ -3235,15 +3370,15 @@ app.post('/class/:id/end', ensureAuthenticated, ensureProfessor, async (req, res
 });
 
 app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
-  if (!db) return res.send('Erro: DB não conectado.');
+  if (!db) return res.json({ success: false, error: 'DB não conectado' });
   const classId = req.params.id;
   const fullName = req.body.fullName?.trim();
 
-  if (!fullName) return res.status(400).send('Informe o nome completo do aluno para marcar presença.');
+  if (!fullName) return res.status(400).json({ success: false, error: 'Informe o nome completo do aluno para marcar presença.' });
 
   try {
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
-    if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
+    if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
 
@@ -3254,10 +3389,17 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
       await db.query(`INSERT INTO attendances (class_session_id, student_name, login_at) VALUES ($1, $2, NOW())`, [sessionId, fullName]);
     }
 
-    res.redirect(`/class/${classId}`);
+    res.json({ success: true, message: 'Presença marcada com sucesso' });
   } catch (err) {
     console.error('Erro ao marcar presença por nome:', err);
-    res.status(500).send('Erro ao registrar presença por nome');
+    if (err.code === '23505' && err.constraint === 'attendances_class_session_name_idx') {
+      return res.status(400).json({
+        success: false,
+        error: 'duplicate_name',
+        message: 'Este nome já foi registrado nesta chamada.'
+      });
+    }
+    res.status(500).json({ success: false, error: 'Erro ao registrar presença por nome' });
   }
 });
 
