@@ -279,8 +279,9 @@ new Chart(ctx, {
     `);
 
   } catch (err) {
-    console.error(err);
-    res.send('Erro no dashboard');
+    console.error('Erro no dashboard:', err.message);
+    console.error(err.stack);
+    res.send('Erro no dashboard: ' + err.message);
   }
 });
 
