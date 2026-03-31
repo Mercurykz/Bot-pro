@@ -56,6 +56,7 @@ app.use(express.urlencoded({ extended: true }));
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
     console.log('DB initialized');
   } catch (err) {
     console.error('Erro ao inicializar DB:', err);
@@ -421,8 +422,19 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
     if (!sessionRes.rowCount) return res.status(400).send('Não há chamada ativa para esta sala.');
 
     const sessionId = sessionRes.rows[0].id;
-    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (class_session_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
+
+    const existing = await db.query(`SELECT student_name FROM attendances WHERE class_session_id = $1 AND student_id = $2`, [sessionId, req.user.id]);
+    if (existing.rowCount) {
+      const currentName = existing.rows[0].student_name || '';
+      if (currentName.trim() !== fullName) {
+        return res.status(400).send(`Presença já registrada com o nome '${currentName}'. Não é possível trocar para '${fullName}' nesta chamada.`);
+      }
+      return res.redirect(`/class/${classId}`);
+    }
+
+    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
       [sessionId, req.user.id, fullName]);
+
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
