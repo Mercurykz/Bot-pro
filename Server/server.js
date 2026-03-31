@@ -58,8 +58,11 @@ app.use(express.urlencoded({ extended: true }));
       );
     `);
 
-    // Garante colunas do novo modelo de sessão
+    // Garante colunas do novo modelo de sessão e compatibilidade retroativa
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS subject_id INTEGER REFERENCES subjects(id)`);
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
@@ -867,8 +870,8 @@ function ensureAuthenticated(req, res, next) {
 }
 
 function ensureProfessor(req, res, next) {
-  if (!req.user || req.user.role !== 'professor') {
-    return res.status(403).send('Acesso negado: apenas professores.');
+  if (!req.user || (req.user.role !== 'professor' && req.user.role !== 'admin')) {
+    return res.status(403).send('Acesso negado: apenas professores ou administradores.');
   }
   return next();
 }
@@ -906,7 +909,7 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
     }
 
     const result = await db.query(
-      `INSERT INTO classes (professor_id, name, subject_id) VALUES ($1, $2, $3) RETURNING id`,
+      `INSERT INTO classes (professor_id, name, subject_id, active, started_at) VALUES ($1, $2, $3, false, NOW()) RETURNING id`,
       [req.user.id, name, subjectId]
     );
     const classId = result.rows[0].id;
