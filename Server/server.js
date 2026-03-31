@@ -2655,30 +2655,31 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   function renderSessions(data, date) {
     const target = document.getElementById('result');
 
-    if (!data.length) {
+    if (!data || !data.length) {
       target.innerHTML = '<div class="result-empty"><p>📭 Nenhuma chamada encontrada.</p></div>';
       return;
     }
 
-    target.innerHTML = '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(c => {
-      const dateLabel = c.start_time ? new Date(c.start_time).toLocaleString('pt-BR') : '-';
-      const status = c.active
+    target.innerHTML = '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(session => {
+      const roomName = session.name || 'Sem nome';
+      const dateLabel = session.start_time ? new Date(session.start_time).toLocaleString('pt-BR') : '-';
+      const status = session.active
         ? '<span style="font-size:12px; color:#10b981;">🟢 Ativa</span>'
         : '<span style="font-size:12px; color:var(--text-muted);">⚪ Encerrada</span>';
-      const exportDate = date || (c.start_time ? c.start_time.slice(0, 10) : 'sem-data');
-      const reopenBtn = !c.active
-        ? '<form method="POST" action="/chamadas/' + c.session_id + '/reopen" style="display:inline;margin:0;" onsubmit="return confirm(\'Deseja reabrir esta chamada?\');"><button type="submit" style="padding:8px 12px; font-size:12px;">🔄 Reabrir</button></form>'
+      const exportDate = date || (session.start_time ? session.start_time.slice(0, 10) : 'sem-data');
+      const reopenBtn = !session.active
+        ? '<form method="POST" action="/chamadas/' + session.session_id + '/reopen" style="display:inline;margin:0;" onsubmit="return confirm(\'Deseja reabrir esta chamada?\');"><button type="submit" style="padding:8px 12px; font-size:12px;">🔄 Reabrir</button></form>'
         : '';
 
       return \`<li>
         <div>
-          <strong>\${c.name}</strong>
+          <strong>\${roomName}</strong>
           <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${dateLabel}</div>
           <div style="margin-top: 6px;">\${status}</div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <a href="/class/\${c.class_id}">Abrir</a>
-          <a href="/chamadas/\${c.session_id}/export?date=\${exportDate}&format=xlsx">📥 Exportar</a>
+          <a href="/class/\${session.class_id}">Abrir</a>
+          <a href="/chamadas/\${session.session_id}/export?date=\${exportDate}&format=xlsx">📥 Exportar</a>
           \${reopenBtn}
         </div>
       </li>\`;
@@ -2688,11 +2689,19 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   async function loadSessions() {
     const date = document.getElementById('date').value;
     const endpoint = date ? '/chamadas/api/' + date : '/chamadas/api';
-    const resp = await fetch(endpoint);
-    if (!resp.ok) return alert('Falha ao carregar chamadas');
-
-    const data = await resp.json();
-    renderSessions(data, date);
+    try {
+      const resp = await fetch(endpoint);
+      if (!resp.ok) {
+        console.error('Erro na resposta:', resp.status, resp.statusText);
+        return alert('Falha ao carregar chamadas: ' + resp.status);
+      }
+      const data = await resp.json();
+      console.log('Dados carregados:', data);
+      renderSessions(data, date);
+    } catch (err) {
+      console.error('Erro ao carregar:', err);
+      alert('Erro ao carregar chamadas: ' + err.message);
+    }
   }
 
   document.getElementById('load').addEventListener('click', loadSessions);
@@ -2716,10 +2725,11 @@ app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) 
        LIMIT 120`,
       [req.user.id]
     );
+    console.log(`[DEBUG] /chamadas/api - Professor ${req.user.id} carregou ${sessions.rows.length} sessões`);
     res.json(sessions.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Falha ao listar chamadas' });
+    console.error('[ERROR] /chamadas/api:', err.message);
+    res.status(500).json({ error: 'Falha ao listar chamadas', details: err.message });
   }
 });
 
@@ -2735,10 +2745,11 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
        ORDER BY s.start_time DESC`,
       [req.user.id, date]
     );
+    console.log(`[DEBUG] /chamadas/api/${date} - Professor ${req.user.id} carregou ${sessions.rows.length} sessões para ${date}`);
     res.json(sessions.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Falha ao listar chamadas' });
+    console.error('[ERROR] /chamadas/api/:date:', err.message);
+    res.status(500).json({ error: 'Falha ao listar chamadas', details: err.message });
   }
 });
 
