@@ -4,10 +4,13 @@ require('dotenv').config();
 const commands = [
   new SlashCommandBuilder()
     .setName('presenca')
-    .setDescription('Registrar presença')
+    .setDescription('Registrar presença'),
+  new SlashCommandBuilder()
+    .setName('chamada')
+    .setDescription('Abrir o sistema atual de chamada')
 ].map(cmd => cmd.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN || process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
