@@ -3786,20 +3786,42 @@ app.post('/admin/class/:id/delete', ensureAuthenticated, ensureAdmin, async (req
 
   try {
     await db.query('BEGIN');
-    const sessions = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1`, [classId]);
-    const sessionIds = sessions.rows.map(s => s.id);
 
-    if (sessionIds.length > 0) {
-      await db.query(`DELETE FROM attendances WHERE class_session_id = ANY($1::int[])`, [sessionIds]);
-      await db.query(`DELETE FROM class_sessions WHERE class_id = $1`, [classId]);
+    // Remove presenças ligadas às sessões da sala
+    await db.query(`
+      DELETE FROM attendances a
+      USING class_sessions cs
+      WHERE a.class_session_id = cs.id
+        AND cs.class_id = $1
+    `, [classId]);
+
+    // Compatibilidade com bancos antigos que ainda possuam attendances.class_id
+    const legacyClassIdColumn = await db.query(`
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'attendances'
+        AND column_name = 'class_id'
+      LIMIT 1
+    `);
+    if (legacyClassIdColumn.rowCount) {
+      await db.query(`DELETE FROM attendances WHERE class_id = $1`, [classId]);
     }
+
+    // Remove sessões da sala
+    await db.query(`DELETE FROM class_sessions WHERE class_id = $1`, [classId]);
 
     await db.query(`DELETE FROM classes WHERE id = $1`, [classId]);
     await db.query('COMMIT');
     res.redirect('/classes');
   } catch (err) {
-    await db.query('ROLLBACK');
-    console.error(err);
+    try { await db.query('ROLLBACK'); } catch (_) {}
+    console.error('Erro ao excluir sala:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint
+    });
     res.status(500).send('Erro ao excluir sala');
   }
 });
