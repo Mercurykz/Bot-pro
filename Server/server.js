@@ -87,14 +87,30 @@ app.get('/', (req, res) => {
 
 console.log('DATABASE_URL', process.env.DATABASE_URL);
 console.log('NODE_ENV', process.env.NODE_ENV);
+console.log('CALLBACK_URL', process.env.CALLBACK_URL);
+console.log('CLIENT_ID defined:', !!process.env.CLIENT_ID);
+console.log('CLIENT_SECRET defined:', !!process.env.CLIENT_SECRET);
+
 // LOGIN
 app.get('/login', passport.authenticate('discord'));
 
 
 // CALLBACK
 app.get('/callback',
-  passport.authenticate('discord', { failureRedirect: '/' }),
-  (req, res) => res.redirect('/dashboard')
+  passport.authenticate('discord', { failureRedirect: '/', failureMessage: true }),
+  (req, res) => {
+    console.log('✅ OAuth callback sucesso:', req.user?.id);
+    res.redirect('/dashboard');
+  }
+);
+
+// Fallback para /auth/discord/callback (common convention)
+app.get('/auth/discord/callback',
+  passport.authenticate('discord', { failureRedirect: '/', failureMessage: true }),
+  (req, res) => {
+    console.log('✅ OAuth callback sucesso (alt route):', req.user?.id);
+    res.redirect('/dashboard');
+  }
 );
 
 

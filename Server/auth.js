@@ -9,17 +9,20 @@ passport.use(new DiscordStrategy({
   clientID: process.env.CLIENT_ID,
   clientSecret: process.env.CLIENT_SECRET,
   callbackURL: process.env.CALLBACK_URL,
-  scope: ['identify', 'guilds', 'guilds.members.read']
+  scope: ['identify', 'guilds', 'guilds.members.read'],
+  state: true
 },
 (accessToken, refreshToken, profile, done) => {
   process.nextTick(async () => {
     try {
+      console.log('🔐 Discord auth initiated for user:', profile.username, 'ID:', profile.id);
+      
       // Buscar cargos do usuário na guilda específica usando token do bot (endpoint de guild member)
       const guildId = process.env.GUILD_ID;
       const botToken = process.env.BOT_TOKEN;
 
       if (!botToken) {
-        console.error('BOT_TOKEN não definido no .env');
+        console.error('⚠️ BOT_TOKEN não definido no .env');
         return done(null, { ...profile, role: 'aluno' });
       }
 
@@ -30,7 +33,7 @@ passport.use(new DiscordStrategy({
       });
 
       if (!response.ok) {
-        console.error('Erro ao buscar membro da guilda:', response.status);
+        console.error('⚠️ Erro ao buscar membro da guilda:', response.status, response.statusText);
         return done(null, { ...profile, role: 'aluno' }); // fallback
       }
 
@@ -48,6 +51,8 @@ passport.use(new DiscordStrategy({
         role = 'aluno';
       }
 
+      console.log('✅ User role assigned:', role);
+
       // Atualizar ou inserir no DB
       if (db) {
         await db.query(
@@ -59,7 +64,7 @@ passport.use(new DiscordStrategy({
 
       done(null, { ...profile, role });
     } catch (error) {
-      console.error('Erro no auth:', error);
+      console.error('❌ Erro no auth:', error.message);
       done(error);
     }
   });
