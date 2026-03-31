@@ -267,6 +267,260 @@ app.get('/dashboard', async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
 
   try {
+    if (req.user.role === 'aluno') {
+      return res.redirect('/minhas-materias');
+    }
+
+    if (req.user.role === 'aluno') {
+      const subjects = await db.query(`
+        WITH student_classes AS (
+          SELECT DISTINCT cs.class_id
+          FROM attendances a
+          JOIN class_sessions cs ON cs.id = a.class_session_id
+          WHERE a.student_id = $1
+        ),
+        subject_sessions AS (
+          SELECT c.subject_id, COALESCE(s.name, 'Sem matéria') AS subject_name, cs.id AS session_id
+          FROM class_sessions cs
+          JOIN classes c ON c.id = cs.class_id
+          LEFT JOIN subjects s ON s.id = c.subject_id
+          WHERE cs.class_id IN (SELECT class_id FROM student_classes)
+        ),
+        student_presence AS (
+          SELECT c.subject_id, a.class_session_id
+          FROM attendances a
+          JOIN class_sessions cs ON cs.id = a.class_session_id
+          JOIN classes c ON c.id = cs.class_id
+          WHERE a.student_id = $1
+        )
+        SELECT
+          ss.subject_id,
+          ss.subject_name,
+          COUNT(DISTINCT ss.session_id)::int AS total_sessions,
+          COUNT(DISTINCT sp.class_session_id)::int AS attended_sessions
+        FROM subject_sessions ss
+        LEFT JOIN student_presence sp
+          ON sp.class_session_id = ss.session_id
+         AND sp.subject_id IS NOT DISTINCT FROM ss.subject_id
+        GROUP BY ss.subject_id, ss.subject_name
+        ORDER BY ss.subject_name ASC
+      `, [req.user.id]);
+
+      const subjectRows = subjects.rows.map(r => ({
+        subject_id: r.subject_id,
+        subject_name: r.subject_name,
+        total_sessions: Number(r.total_sessions) || 0,
+        attended_sessions: Number(r.attended_sessions) || 0
+      }));
+
+      const totalAttendedRes = await db.query(
+        `SELECT COUNT(DISTINCT class_session_id)::int AS total FROM attendances WHERE student_id = $1`,
+        [req.user.id]
+      );
+      const totalAttended = Number(totalAttendedRes.rows[0]?.total || 0);
+      const totalAvailable = subjectRows.reduce((sum, s) => sum + s.total_sessions, 0);
+      const overallFrequency = totalAvailable > 0 ? ((totalAttended / totalAvailable) * 100) : 0;
+
+      const selectedParam = typeof req.query.subject === 'string' ? req.query.subject : '';
+      const selectedRow = subjectRows.find(s => {
+        const key = s.subject_id === null ? 'none' : String(s.subject_id);
+        return key === selectedParam;
+      }) || subjectRows[0] || null;
+
+      let historySql = `
+        SELECT
+          COALESCE(s.name, 'Sem matéria') AS subject_name,
+          c.name AS class_name,
+          cs.start_time,
+          a.login_at
+        FROM attendances a
+        JOIN class_sessions cs ON cs.id = a.class_session_id
+        JOIN classes c ON c.id = cs.class_id
+        LEFT JOIN subjects s ON s.id = c.subject_id
+        WHERE a.student_id = $1
+      `;
+      const historyParams = [req.user.id];
+      if (selectedRow) {
+        if (selectedRow.subject_id === null) {
+          historySql += ` AND c.subject_id IS NULL`;
+        } else {
+          historyParams.push(selectedRow.subject_id);
+          historySql += ` AND c.subject_id = $2`;
+        }
+      }
+      historySql += ` ORDER BY cs.start_time DESC LIMIT 50`;
+      const history = await db.query(historySql, historyParams);
+
+      const subjectMenu = subjectRows.map(s => {
+        const key = s.subject_id === null ? 'none' : String(s.subject_id);
+        const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
+        const isActive = selectedRow && ((selectedRow.subject_id === null && s.subject_id === null) || selectedRow.subject_id === s.subject_id);
+        return `<li>
+          <a href="/dashboard?subject=${key}" class="${isActive ? 'active-subject' : ''}">
+            <span>📘 ${s.subject_name}</span>
+            <strong>${pct}%</strong>
+          </a>
+        </li>`;
+      }).join('');
+
+      const selectedPct = selectedRow && selectedRow.total_sessions > 0
+        ? ((selectedRow.attended_sessions / selectedRow.total_sessions) * 100).toFixed(1)
+        : '0.0';
+
+      const historyList = history.rows.map(h => `<li>
+        <div>
+          <strong>${h.class_name}</strong>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">📘 ${h.subject_name}</div>
+        </div>
+        <div style="text-align:right; color: var(--text-muted); font-size: 12px;">
+          <div>🕒 Aula: ${new Date(h.start_time).toLocaleString('pt-BR')}</div>
+          <div>✅ Presença: ${new Date(h.login_at).toLocaleString('pt-BR')}</div>
+        </div>
+      </li>`).join('');
+
+      return res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presença Plus | Minha Frequência</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --primary:#6366f1; --secondary:#8b5cf6; --bg-dark:#0f172a; --bg-darker:#020617;
+  --card-dark:#1e293b; --text-light:#f1f5f9; --text-muted:#94a3b8; --border-color:#334155; --success:#10b981;
+}
+.light {
+  --bg-dark:#f8fafc; --bg-darker:#f1f5f9; --card-dark:#ffffff; --text-light:#1e293b; --text-muted:#64748b; --border-color:#e2e8f0;
+}
+html, body { font-family:'Poppins',sans-serif; background:var(--bg-dark); color:var(--text-light); min-height:100%; }
+body { display:flex; }
+.sidebar { width:280px; background:var(--bg-darker); border-right:1px solid var(--border-color); padding:30px 20px; position:fixed; height:100vh; overflow-y:auto; }
+.sidebar h2 { font-size:24px; margin-bottom:14px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.user-info { background:var(--card-dark); padding:15px; border-radius:12px; margin-bottom:20px; border-left:4px solid var(--primary); }
+.user-info p:last-child { font-size:12px; color:#fff; background:var(--primary); padding:4px 10px; border-radius:20px; display:inline-block; margin-top:6px; }
+.nav-menu, .subject-menu { list-style:none; }
+.nav-menu li, .subject-menu li { margin-bottom:10px; }
+.nav-menu a, .subject-menu a { display:flex; justify-content:space-between; gap:10px; padding:12px 14px; color:var(--text-muted); text-decoration:none; border-radius:10px; border-left:3px solid transparent; transition:.25s; }
+.nav-menu a:hover, .subject-menu a:hover { background:var(--card-dark); color:var(--text-light); border-left-color:var(--primary); }
+.active-subject { background:var(--card-dark); color:var(--text-light)!important; border-left-color:var(--success)!important; }
+.content { margin-left:280px; flex:1; padding:40px; }
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-bottom:20px; }
+.card { background:var(--card-dark); border:1px solid var(--border-color); border-radius:14px; padding:22px; }
+.metric h2 { font-size:34px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.metric p { color:var(--text-muted); font-size:13px; text-transform:uppercase; letter-spacing:.7px; }
+.layout { display:grid; grid-template-columns: 340px 1fr; gap:16px; }
+.history li { padding:12px 0; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; gap:8px; }
+.history li:last-child { border-bottom:none; }
+.theme-btn { background:var(--card-dark); border:1px solid var(--border-color); color:var(--text-light); padding:10px 14px; border-radius:8px; cursor:pointer; }
+@media (max-width: 980px) { .layout { grid-template-columns:1fr; } }
+@media (max-width: 768px) {
+  body { flex-direction:column; }
+  .sidebar { position:static; width:100%; height:auto; }
+  .content { margin-left:0; padding:20px; }
+}
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>✨ Presença Plus</h2>
+    <div class="user-info">
+      <p>${req.user.username}</p>
+      <p>👨‍🎓 Aluno</p>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="/dashboard">📊 Minha Frequência</a></li>
+      <li><a href="/classes">🏫 Salas de Aula</a></li>
+      <li><a href="/logout">🚪 Sair</a></li>
+    </ul>
+  </div>
+
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h1>Minha Frequência por Matéria</h1>
+        <p style="color:var(--text-muted); margin-top:4px;">Acompanhe seu desempenho em cada disciplina.</p>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">🌙</button>
+    </div>
+
+    <div class="grid">
+      <div class="card metric">
+        <h2>${totalAttended}</h2>
+        <p>Chamadas com Presença</p>
+      </div>
+      <div class="card metric">
+        <h2>${overallFrequency.toFixed(1)}%</h2>
+        <p>Frequência Geral</p>
+      </div>
+      <div class="card metric">
+        <h2>${selectedPct}%</h2>
+        <p>Frequência na Matéria Selecionada</p>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="card" id="materias">
+        <h2 style="margin-bottom:14px;">📚 Menu de Matérias</h2>
+        <ul class="subject-menu">${subjectMenu || '<li style="color:var(--text-muted);">Sem matérias com presença ainda.</li>'}</ul>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:16px;">
+          <h2 style="margin-bottom:10px;">📈 Frequência por Matéria</h2>
+          <canvas id="freqChart" height="130"></canvas>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:10px;">🧾 Histórico (${selectedRow ? selectedRow.subject_name : 'Sem matéria'})</h2>
+          <ul class="history">${historyList || '<li style="color:var(--text-muted);">Nenhuma presença registrada para esta matéria.</li>'}</ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.documentElement.classList.add('light');
+}
+
+const labels = ${JSON.stringify(subjectRows.map(s => s.subject_name))};
+const dataPct = ${JSON.stringify(subjectRows.map(s => s.total_sessions > 0 ? Number(((s.attended_sessions / s.total_sessions) * 100).toFixed(1)) : 0))};
+
+const ctx = document.getElementById('freqChart');
+if (ctx) {
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Frequência (%)',
+        data: dataPct,
+        borderRadius: 8,
+        backgroundColor: '#6366f1'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100 }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
+      `);
+    }
 
     // 📊 gráfico
     const result = await db.query(`
@@ -822,6 +1076,159 @@ if (ctx) {
     console.error('Erro no dashboard:', err.message);
     console.error(err.stack);
     res.send('Erro no dashboard: ' + err.message);
+  }
+});
+
+
+app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+
+  try {
+    const subjects = await db.query(`
+      WITH student_classes AS (
+        SELECT DISTINCT cs.class_id
+        FROM attendances a
+        JOIN class_sessions cs ON cs.id = a.class_session_id
+        WHERE a.student_id = $1
+      ),
+      subject_sessions AS (
+        SELECT c.subject_id, COALESCE(s.name, 'Sem matéria') AS subject_name, cs.id AS session_id
+        FROM class_sessions cs
+        JOIN classes c ON c.id = cs.class_id
+        LEFT JOIN subjects s ON s.id = c.subject_id
+        WHERE cs.class_id IN (SELECT class_id FROM student_classes)
+      ),
+      student_presence AS (
+        SELECT c.subject_id, a.class_session_id
+        FROM attendances a
+        JOIN class_sessions cs ON cs.id = a.class_session_id
+        JOIN classes c ON c.id = cs.class_id
+        WHERE a.student_id = $1
+      )
+      SELECT
+        ss.subject_id,
+        ss.subject_name,
+        COUNT(DISTINCT ss.session_id)::int AS total_sessions,
+        COUNT(DISTINCT sp.class_session_id)::int AS attended_sessions
+      FROM subject_sessions ss
+      LEFT JOIN student_presence sp
+        ON sp.class_session_id = ss.session_id
+       AND sp.subject_id IS NOT DISTINCT FROM ss.subject_id
+      GROUP BY ss.subject_id, ss.subject_name
+      ORDER BY ss.subject_name ASC
+    `, [req.user.id]);
+
+    const subjectRows = subjects.rows.map(r => ({
+      subject_id: r.subject_id,
+      subject_name: r.subject_name,
+      total_sessions: Number(r.total_sessions) || 0,
+      attended_sessions: Number(r.attended_sessions) || 0
+    }));
+
+    const selectedParam = typeof req.query.subject === 'string' ? req.query.subject : '';
+    const selectedRow = subjectRows.find(s => {
+      const key = s.subject_id === null ? 'none' : String(s.subject_id);
+      return key === selectedParam;
+    }) || subjectRows[0] || null;
+
+    let historySql = `
+      SELECT
+        COALESCE(s.name, 'Sem matéria') AS subject_name,
+        c.name AS class_name,
+        cs.start_time,
+        a.login_at
+      FROM attendances a
+      JOIN class_sessions cs ON cs.id = a.class_session_id
+      JOIN classes c ON c.id = cs.class_id
+      LEFT JOIN subjects s ON s.id = c.subject_id
+      WHERE a.student_id = $1
+    `;
+    const historyParams = [req.user.id];
+    if (selectedRow) {
+      if (selectedRow.subject_id === null) {
+        historySql += ` AND c.subject_id IS NULL`;
+      } else {
+        historyParams.push(selectedRow.subject_id);
+        historySql += ` AND c.subject_id = $2`;
+      }
+    }
+    historySql += ` ORDER BY cs.start_time DESC LIMIT 50`;
+    const history = await db.query(historySql, historyParams);
+
+    const subjectMenu = subjectRows.map(s => {
+      const key = s.subject_id === null ? 'none' : String(s.subject_id);
+      const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
+      const isActive = selectedRow && ((selectedRow.subject_id === null && s.subject_id === null) || selectedRow.subject_id === s.subject_id);
+      return `<li><a href="/minhas-materias?subject=${key}" class="${isActive ? 'active' : ''}">📘 ${s.subject_name} <strong>${pct}%</strong></a></li>`;
+    }).join('');
+
+    const historyList = history.rows.map(h => `<li>
+      <div><strong>${h.class_name}</strong><div style="color:#94a3b8;font-size:12px;">📘 ${h.subject_name}</div></div>
+      <div style="color:#94a3b8;font-size:12px;text-align:right;">${new Date(h.login_at).toLocaleString('pt-BR')}</div>
+    </li>`).join('');
+
+    const totalAttended = subjectRows.reduce((sum, s) => sum + s.attended_sessions, 0);
+    const totalSessions = subjectRows.reduce((sum, s) => sum + s.total_sessions, 0);
+    const frequency = totalSessions > 0 ? ((totalAttended / totalSessions) * 100).toFixed(1) : '0.0';
+
+    res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minhas Matérias | Presença Plus</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Poppins,sans-serif;background:#0f172a;color:#f1f5f9;display:flex;min-height:100vh}
+    .sidebar{width:280px;background:#020617;border-right:1px solid #334155;padding:24px}
+    .sidebar h2{margin-bottom:16px}
+    .nav a,.subjects a{display:flex;justify-content:space-between;padding:10px 12px;border-radius:8px;color:#94a3b8;text-decoration:none;margin-bottom:8px}
+    .nav a:hover,.subjects a:hover,.subjects a.active{background:#1e293b;color:#f1f5f9}
+    .content{flex:1;padding:30px}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+    .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px}
+    .layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
+    ul{list-style:none}
+    li{padding:12px 0;border-bottom:1px solid #334155;display:flex;justify-content:space-between;gap:10px}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{width:100%}body{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>✨ Presença Plus</h2>
+    <div class="nav">
+      <a href="/minhas-materias">📊 Minhas Matérias</a>
+      <a href="/classes">🏫 Salas de Aula</a>
+      <a href="/logout">🚪 Sair</a>
+    </div>
+  </div>
+  <div class="content">
+    <h1 style="margin-bottom:6px;">Frequência por Matéria</h1>
+    <p style="color:#94a3b8;margin-bottom:16px;">Aluno: ${req.user.username}</p>
+    <div class="cards">
+      <div class="card"><h2>${totalAttended}</h2><p>Presenças registradas</p></div>
+      <div class="card"><h2>${frequency}%</h2><p>Frequência geral</p></div>
+      <div class="card"><h2>${subjectRows.length}</h2><p>Matérias no histórico</p></div>
+    </div>
+    <div class="layout">
+      <div class="card">
+        <h3 style="margin-bottom:10px;">📚 Menu de Matérias</h3>
+        <ul class="subjects">${subjectMenu || '<li style="color:#94a3b8;">Sem matérias ainda.</li>'}</ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px;">🧾 Presenças ${selectedRow ? `- ${selectedRow.subject_name}` : ''}</h3>
+        <ul>${historyList || '<li style="color:#94a3b8;">Nenhuma presença para esta matéria.</li>'}</ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error('Erro em /minhas-materias:', err);
+    res.status(500).send('Erro ao carregar matérias do aluno');
   }
 });
 
