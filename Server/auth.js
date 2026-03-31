@@ -41,13 +41,19 @@ passport.use(new DiscordStrategy({
       const roles = memberData.roles || [];
 
       // Definir role baseado nos cargos
-      const professorRoleId = process.env.PROFESSOR_ROLE_ID;
-      const alunoRoleId = process.env.ALUNO_ROLE_ID;
+      const adminRoleId = (process.env.ADMIN_ROLE_ID || '').trim();
+      const professorRoleId = (process.env.PROFESSOR_ROLE_ID || '').trim();
+      const alunoRoleId = (process.env.ALUNO_ROLE_ID || '').trim();
+
+      console.log('🔍 Discord roles for user:', roles);
+      console.log('🔍 ADMIN_ROLE_ID:', adminRoleId, 'PROFESSOR_ROLE_ID:', professorRoleId, 'ALUNO_ROLE_ID:', alunoRoleId);
 
       let role = 'aluno'; // default
-      if (roles.includes(professorRoleId)) {
+      if (adminRoleId && roles.includes(adminRoleId)) {
+        role = 'admin';
+      } else if (professorRoleId && roles.includes(professorRoleId)) {
         role = 'professor';
-      } else if (roles.includes(alunoRoleId)) {
+      } else if (alunoRoleId && roles.includes(alunoRoleId)) {
         role = 'aluno';
       }
 
