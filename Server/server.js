@@ -72,7 +72,8 @@ app.get('/', (req, res) => {
   `);
 });
 
-
+console.log('DATABASE_URL', process.env.DATABASE_URL);
+console.log('NODE_ENV', process.env.NODE_ENV);
 // LOGIN
 app.get('/login', passport.authenticate('discord'));
 
@@ -214,7 +215,10 @@ button {
 
 <div class="sidebar">
   <h2>📊 Dashboard</h2>
-  <p>${req.user.username}</p>
+  <p>${req.user.username} (${req.user.role || 'sem role'})</p>
+  <p><a href="/dashboard" style="color: #fff;">Visão Geral</a></p>
+  <p><a href="/classes" style="color: #fff;">Salas de Aula</a></p>
+  <p><a href="/logout" style="color: #fff;">Sair</a></p>
 </div>
 
 <div class="content">
@@ -453,6 +457,47 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Falha ao buscar participantes' });
   }
+});
+
+app.get('/classes', ensureAuthenticated, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    let html = '<h1>Salas de Aula</h1>';
+
+    if (req.user.role === 'professor') {
+      const classes = await db.query(`SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 ORDER BY started_at DESC`, [req.user.id]);
+      html += `<h2>Suas salas</h2><ul>${classes.rows.map(c => `<li>${c.name} - ${c.active ? 'Ativa' : 'Encerrada'} - <a href="/class/${c.id}">Abrir</a> ${c.active ? `<form method="POST" action="/class/${c.id}/end" style="display:inline"><button>Encerrar</button></form>` :' '}</li>`).join('')}</ul>`;
+      html += `<h3>Criar nova sala</h3><form method="POST" action="/class/start"><input name="name" required placeholder="Nome da sala"/><button>Iniciar chamada</button></form>`;
+    } else {
+      const classes = await db.query(`SELECT c.id, c.name, c.active, u.username AS professor_name FROM classes c JOIN users u ON u.id = c.professor_id WHERE c.active = true ORDER BY c.started_at DESC`);
+      html += `<h2>Salas disponíveis</h2><ul>${classes.rows.map(c => `<li>${c.name} (Prof. ${c.professor_name}) - <a href="/class/${c.id}">Abrir</a></li>`).join('')}</ul>`;
+    }
+
+    html += '<p><a href="/dashboard">Voltar ao dashboard</a></p>';
+    res.send(html);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar lista de salas');
+  }
+});
+
+app.post('/class/:id/end', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const classId = req.params.id;
+  try {
+    await db.query(`UPDATE classes SET active = false, ended_at = NOW() WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+    res.redirect('/classes');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao encerrar classe');
+  }
+});
+
+app.get('/logout', ensureAuthenticated, (req, res) => {
+  req.logout(err => {
+    if (err) console.error(err);
+    res.redirect('/');
+  });
 });
 
 // START
