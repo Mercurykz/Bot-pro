@@ -14,11 +14,18 @@ passport.use(new DiscordStrategy({
 (accessToken, refreshToken, profile, done) => {
   process.nextTick(async () => {
     try {
-      // Buscar cargos do usuário na guilda específica
+      // Buscar cargos do usuário na guilda específica usando token do bot (endpoint de guild member)
       const guildId = process.env.GUILD_ID;
-      const response = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
+      const botToken = process.env.BOT_TOKEN;
+
+      if (!botToken) {
+        console.error('BOT_TOKEN não definido no .env');
+        return done(null, { ...profile, role: 'aluno' });
+      }
+
+      const response = await fetch(`https://discord.com/api/guilds/${guildId}/members/${profile.id}`, {
         headers: {
-          Authorization: `Bearer ${accessToken}`
+          Authorization: `Bot ${botToken}`
         }
       });
 
