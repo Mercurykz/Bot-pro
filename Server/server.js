@@ -1043,26 +1043,323 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
 
 app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   res.send(`
-    <h1>Chamadas</h1>
-    <p>Selecione a data para ver as salas:</p>
-    <input id="date" type="date" />
-    <button id="load">Carregar</button>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Chamadas</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --success: #10b981;
+    }
+
+    .light {
+      --bg-dark: #f8fafc;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
+
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
+
+    body {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      height: 100vh;
+      position: fixed;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-menu {
+      list-style: none;
+    }
+
+    .nav-menu li {
+      margin-bottom: 10px;
+    }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-menu a:hover {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    .topbar h1 {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type="date"] {
+      padding: 12px 16px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-light);
+      border-radius: 8px;
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+      flex: 1;
+      max-width: 250px;
+    }
+
+    input[type="date"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 14px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    li:last-child {
+      border-bottom: none;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    a:hover {
+      color: var(--secondary);
+    }
+
+    .result-empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    .result-empty p {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--primary);
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: var(--border-color);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .content {
+        margin-left: 0;
+        padding: 20px;
+      }
+      .form-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      input[type="date"] {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Presença Plus</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/chamadas">📋 Chamadas</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>📋 Histórico de Chamadas</h1>
+  </div>
+
+  <div class="card">
+    <div class="form-group">
+      <div style="flex: 1;">
+        <label for="date">Selecione a data</label>
+        <input id="date" type="date" />
+      </div>
+      <button id="load">Carregar</button>
+    </div>
     <div id="result"></div>
-    <script>
-      document.getElementById('load').addEventListener('click', async () => {
-        const date = document.getElementById('date').value;
-        if (!date) return alert('Selecione uma data');
-        const resp = await fetch('/chamadas/api/' + date);
-        if (!resp.ok) return alert('Falha ao carregar chamadas');
-        const data = await resp.json();
-        const target = document.getElementById('result');
-        if (!data.length) return target.innerHTML = '<p>Nenhuma chamada nessa data.</p>';
-        target.innerHTML = '<h2>Salas</h2><ul>' + data.map(c =>
-          '<li>' + c.name + ' (' + new Date(c.start_time).toLocaleTimeString() + ') - <a href="/class/' + c.class_id + '">Abrir</a> - <a href="/chamadas/' + c.session_id + '/export?date=' + date + '&format=xlsx">Exportar XLSX</a></li>'
-        ).join('') + '</ul>';
-      });
-    </script>
-    <p><a href="/dashboard">Voltar</a></p>
+  </div>
+
+  <a href="/dashboard" class="back-link">← Voltar ao Dashboard</a>
+</div>
+
+<script>
+  document.getElementById('load').addEventListener('click', async () => {
+    const date = document.getElementById('date').value;
+    if (!date) return alert('Selecione uma data');
+    
+    const resp = await fetch('/chamadas/api/' + date);
+    if (!resp.ok) return alert('Falha ao carregar chamadas');
+    
+    const data = await resp.json();
+    const target = document.getElementById('result');
+    
+    if (!data.length) {
+      target.innerHTML = '<div class="result-empty"><p>📭 Nenhuma chamada registrada nessa data.</p></div>';
+      return;
+    }
+    
+    target.innerHTML = '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(c => {
+      const time = new Date(c.start_time).toLocaleTimeString('pt-BR');
+      return \`<li>
+        <div>
+          <strong>\${c.name}</strong>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${time}</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <a href="/class/\${c.class_id}">Abrir</a>
+          <a href="/chamadas/\${c.session_id}/export?date=\${date}&format=xlsx">📥 Exportar</a>
+        </div>
+      </li>\`;
+    }).join('') + '</ul>';
+  });
+</script>
+
+</body>
+</html>
   `);
 });
 
@@ -1132,27 +1429,552 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
 app.get('/classes', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
-    let html = '<h1>Salas de Aula</h1>';
-
     if (req.user.role === 'professor') {
       const rooms = await db.query(`SELECT id, name FROM classes WHERE professor_id = $1 ORDER BY id DESC`, [req.user.id]);
       const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
       const activeSet = new Set(activeSessions.rows.map(r => r.class_id));
 
-      html += `<h2>Salas</h2><ul>` + rooms.rows.map(r => {
+      const roomsList = rooms.rows.map(r => {
         const isActive = activeSet.has(r.id);
-        return `<li>${r.name} - ${isActive ? 'Em chamada' : 'Disponível'} - <a href="/class/${r.id}">Abrir</a>` +
-          (isActive ? ` <form method="POST" action="/class/${r.id}/end" style="display:inline"><button>Encerrar chamada</button></form>` : ` <form method="POST" action="/class/${r.id}/start-session" style="display:inline"><button>Iniciar chamada</button></form>`) +
-          `</li>`;
-      }).join('') + `</ul>`;
-      html += `<h3>Criar nova sala</h3><form method="POST" action="/class/start"><input name="name" required placeholder="Nome da sala"/><button>Criar sala</button></form>`;
-    } else {
-      const classes = await db.query(`SELECT c.id, c.name, u.username AS professor_name FROM class_sessions s JOIN classes c ON s.class_id = c.id JOIN users u ON c.professor_id = u.id WHERE s.active = true ORDER BY s.start_time DESC`);
-      html += `<h2>Salas disponíveis</h2><ul>${classes.rows.map(c => `<li>${c.name} (Prof. ${c.professor_name}) - <a href="/class/${c.id}">Abrir</a></li>`).join('')}</ul>`;
+        const statusBadge = isActive ? '<span class="badge badge-active">🔴 Em Chamada</span>' : '<span class="badge badge-inactive">⚪ Disponível</span>';
+        return `<li>
+          <div>
+            <strong>${r.name}</strong>
+            <div style="margin-top: 8px;">${statusBadge}</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <a href="/class/${r.id}">Abrir</a>
+            ${isActive ? `<form method="POST" action="/class/${r.id}/end" style="display:inline; margin: 0;"><button type="submit" class="btn-danger">Encerrar</button></form>` : `<form method="POST" action="/class/${r.id}/start-session" style="display:inline; margin: 0;"><button type="submit">Iniciar</button></form>`}
+          </div>
+        </li>`;
+      }).join('');
+
+      const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Salas de Aula</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
 
-    html += '<p><a href="/dashboard">Voltar ao dashboard</a></p>';
-    res.send(html);
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --danger: #ef4444;
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --success: #10b981;
+    }
+
+    .light {
+      --bg-dark: #f8fafc;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
+
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
+
+    body {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      height: 100vh;
+      position: fixed;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-menu {
+      list-style: none;
+    }
+
+    .nav-menu li {
+      margin-bottom: 10px;
+    }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-menu a:hover {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    .topbar h1 {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    form {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 0;
+    }
+
+    form input {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-light);
+      border-radius: 8px;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    form input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    button, .btn-danger {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+      transition: all 0.3s;
+      font-size: 14px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, var(--danger), #dc2626);
+    }
+
+    .btn-danger:hover {
+      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    li:last-child {
+      border-bottom: none;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    a:hover {
+      color: var(--secondary);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-active {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    .badge-inactive {
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-muted);
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--primary);
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: var(--border-color);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .content {
+        margin-left: 0;
+        padding: 20px;
+      }
+      form {
+        flex-direction: column;
+      }
+      li {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      li > div:last-child {
+        width: 100%;
+        display: flex;
+        gap: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Presença Plus</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/chamadas">📋 Chamadas</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>🏫 Salas de Aula</h1>
+  </div>
+
+  <div class="card">
+    <h2>➕ Criar Nova Sala</h2>
+    <form method="POST" action="/class/start">
+      <input name="name" required placeholder="Nome da sala" />
+      <button type="submit">Criar Sala</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>📚 Minhas Salas</h2>
+    <ul>${roomsList}</ul>
+  </div>
+
+  <a href="/dashboard" class="back-link">← Voltar ao Dashboard</a>
+</div>
+
+</body>
+</html>
+      `;
+      res.send(html);
+    } else {
+      const classes = await db.query(`SELECT c.id, c.name, u.username AS professor_name FROM class_sessions s JOIN classes c ON s.class_id = c.id JOIN users u ON c.professor_id = u.id WHERE s.active = true ORDER BY s.start_time DESC`);
+      
+      const classList = classes.rows.map(c => `<li>
+        <div>
+          <strong>${c.name}</strong>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">👨‍🏫 Prof. ${c.professor_name}</div>
+        </div>
+        <a href="/class/${c.id}">Entrar</a>
+      </li>`).join('');
+
+      const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Salas Disponíveis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+    }
+
+    .light {
+      --bg-dark: #f8fafc;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
+
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
+
+    body {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      height: 100vh;
+      position: fixed;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-menu {
+      list-style: none;
+    }
+
+    .nav-menu li {
+      margin-bottom: 10px;
+    }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-menu a:hover {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    .topbar {
+      margin-bottom: 40px;
+    }
+
+    .topbar h1 {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    li:last-child {
+      border-bottom: none;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    a:hover {
+      color: var(--secondary);
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--primary);
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: var(--border-color);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .content {
+        margin-left: 0;
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Presença Plus</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>🎓 Salas Disponíveis</h1>
+    <p style="color: var(--text-muted); margin-top: 8px;">Escolha uma sala para registrar sua presença</p>
+  </div>
+
+  <div class="card">
+    <h2>📚 Salas Ativas</h2>
+    <ul>${classList || '<li style="color: var(--text-muted);">📭 Nenhuma sala disponível no momento</li>'}</ul>
+  </div>
+
+  <a href="/dashboard" class="back-link">← Voltar ao Dashboard</a>
+</div>
+
+</body>
+</html>
+      `;
+      res.send(html);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao carregar lista de salas');
