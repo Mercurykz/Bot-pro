@@ -1610,7 +1610,10 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
     const subjectsRes = await db.query('SELECT * FROM subjects ORDER BY name');
-    const rows = subjectsRes.rows.map(s => `<li><span>📘 ${s.name}</span></li>`).join('');
+    const rows = subjectsRes.rows.map(s => `<li>
+      <span>📘 ${s.name}</span>
+      ${req.user.role === 'admin' ? `<form method="POST" action="/admin/subject/${s.id}/delete" style="display:inline;margin:0;" onsubmit="return confirm('Tem certeza que deseja excluir esta matéria?');"><button type="submit" class="btn-delete">🗑️ Excluir</button></form>` : ''}
+    </li>`).join('');
     res.send(`
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1641,6 +1644,7 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
     form { display:flex; gap:10px; margin-top:12px; }
     input { flex:1; padding:12px 14px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-darker); color:var(--text-light); }
     button { padding:12px 16px; border:none; border-radius:8px; background:linear-gradient(135deg,var(--primary),var(--secondary)); color:#fff; font-weight:600; cursor:pointer; }
+    .btn-delete { background: linear-gradient(135deg, #ef4444, #dc2626); }
     @media (max-width:768px) { body{flex-direction:column;} .sidebar{position:static;width:100%;height:auto;} .content{margin-left:0;padding:20px;} form{flex-direction:column;} }
   </style>
 </head>
@@ -2749,19 +2753,30 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
 app.get('/classes', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
-    if (req.user.role === 'professor') {
+    if (req.user.role === 'professor' || req.user.role === 'admin') {
       const subjectsRes = await db.query('SELECT id, name FROM subjects ORDER BY name');
       const subjectOptions = subjectsRes.rows.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
-      const rooms = await db.query(`
-        SELECT c.id, c.name, c.subject_id, s.name AS subject_name
-        FROM classes c
-        LEFT JOIN subjects s ON c.subject_id = s.id
-        WHERE c.professor_id = $1
-        ORDER BY c.id DESC
-      `, [req.user.id]);
+      const rooms = req.user.role === 'admin'
+        ? await db.query(`
+          SELECT c.id, c.name, c.subject_id, s.name AS subject_name, u.username AS professor_name
+          FROM classes c
+          LEFT JOIN subjects s ON c.subject_id = s.id
+          LEFT JOIN users u ON c.professor_id = u.id
+          ORDER BY c.id DESC
+        `)
+        : await db.query(`
+          SELECT c.id, c.name, c.subject_id, s.name AS subject_name, u.username AS professor_name
+          FROM classes c
+          LEFT JOIN subjects s ON c.subject_id = s.id
+          LEFT JOIN users u ON c.professor_id = u.id
+          WHERE c.professor_id = $1
+          ORDER BY c.id DESC
+        `, [req.user.id]);
 
-      const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
+      const activeSessions = req.user.role === 'admin'
+        ? await db.query(`SELECT class_id FROM class_sessions WHERE active = true`)
+        : await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
       const activeSet = new Set(activeSessions.rows.map(r => r.class_id));
 
       const roomsList = rooms.rows.map(r => {
@@ -2772,10 +2787,12 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
           <div>
             <strong>${r.name}</strong>
             <div style="margin-top: 8px;">${subjectBadge} ${statusBadge}</div>
+            ${req.user.role === 'admin' ? `<div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">👨‍🏫 Prof. ${r.professor_name || 'Não definido'}</div>` : ''}
           </div>
           <div style="display: flex; gap: 8px;">
             <a href="/class/${r.id}">Abrir</a>
-            ${isActive ? `<form method="POST" action="/class/${r.id}/end" style="display:inline; margin: 0;"><button type="submit" class="btn-danger">Encerrar</button></form>` : `<form method="POST" action="/class/${r.id}/start-session" style="display:inline; margin: 0;"><button type="submit">Iniciar</button></form>`}
+            ${req.user.role === 'professor' ? (isActive ? `<form method="POST" action="/class/${r.id}/end" style="display:inline; margin: 0;"><button type="submit" class="btn-danger">Encerrar</button></form>` : `<form method="POST" action="/class/${r.id}/start-session" style="display:inline; margin: 0;"><button type="submit">Iniciar</button></form>`) : ''}
+            ${req.user.role === 'admin' ? `<form method="POST" action="/admin/class/${r.id}/delete" style="display:inline; margin: 0;" onsubmit="return confirm('Tem certeza que deseja excluir esta sala e todo o histórico de chamadas?');"><button type="submit" class="btn-danger">🗑️ Excluir</button></form>` : ''}
           </div>
         </li>`;
       }).join('');
@@ -3096,7 +3113,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <h1>🏫 Salas de Aula</h1>
   </div>
 
-  <div class="card">
+  ${req.user.role === 'professor' ? `<div class="card">
     <h2>➕ Criar Nova Sala</h2>
     <form method="POST" action="/class/start">
       <input name="name" required placeholder="Nome da sala" />
@@ -3107,10 +3124,10 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
       <button type="submit">Criar Sala</button>
     </form>
     <p style="margin-top:10px;color:var(--text-muted);font-size:13px;">Gerencie matérias em <a href="/subjects" style='color:var(--primary);'>/subjects</a>.</p>
-  </div>
+  </div>` : ''}
 
   <div class="card">
-    <h2>📚 Minhas Salas</h2>
+    <h2>${req.user.role === 'admin' ? '📚 Todas as Salas' : '📚 Minhas Salas'}</h2>
     <ul>${roomsList}</ul>
   </div>
 
@@ -3741,6 +3758,49 @@ app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) =
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao carregar dashboard admin');
+  }
+});
+
+app.post('/admin/subject/:id/delete', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const subjectId = parseInt(req.params.id, 10);
+  if (!subjectId) return res.status(400).send('ID de matéria inválido.');
+
+  try {
+    await db.query('BEGIN');
+    await db.query(`UPDATE classes SET subject_id = NULL WHERE subject_id = $1`, [subjectId]);
+    await db.query(`DELETE FROM subjects WHERE id = $1`, [subjectId]);
+    await db.query('COMMIT');
+    res.redirect('/subjects');
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error(err);
+    res.status(500).send('Erro ao excluir matéria');
+  }
+});
+
+app.post('/admin/class/:id/delete', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const classId = parseInt(req.params.id, 10);
+  if (!classId) return res.status(400).send('ID de sala inválido.');
+
+  try {
+    await db.query('BEGIN');
+    const sessions = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1`, [classId]);
+    const sessionIds = sessions.rows.map(s => s.id);
+
+    if (sessionIds.length > 0) {
+      await db.query(`DELETE FROM attendances WHERE class_session_id = ANY($1::int[])`, [sessionIds]);
+      await db.query(`DELETE FROM class_sessions WHERE class_id = $1`, [classId]);
+    }
+
+    await db.query(`DELETE FROM classes WHERE id = $1`, [classId]);
+    await db.query('COMMIT');
+    res.redirect('/classes');
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error(err);
+    res.status(500).send('Erro ao excluir sala');
   }
 });
 
