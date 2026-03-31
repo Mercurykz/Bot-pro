@@ -16,6 +16,10 @@ app.use(express.urlencoded({ extended: true }));
     return;
   }
   try {
+    // Testa conexão
+    await db.query('SELECT 1');
+    console.log('DB conectado com sucesso.');
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
