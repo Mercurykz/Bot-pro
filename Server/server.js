@@ -455,7 +455,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
        FROM class_sessions s
        LEFT JOIN attendances a ON a.class_session_id = s.id
        WHERE s.class_id = $1
-       GROUP BY s.id
+       GROUP BY s.id, s.start_time, s.end_time, s.active
        ORDER BY s.start_time DESC`,
        [classId]
     );
@@ -486,7 +486,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
       <h2>Timeline do professor</h2>
       <ul>
-        ${timeline.rows.map(t => `<li>${t.name} - ${t.total_presencas} alunos - ${t.active ? 'Ativa' : 'Encerrada'}</li>`).join('')}
+        ${timeline.rows.map(t => `<li>${new Date(t.start_time).toLocaleString()} - ${t.total_presencas} alunos - ${t.active ? 'Ativa' : 'Encerrada'}</li>`).join('')}
       </ul>
       <p><a href="/dashboard">Voltar ao dashboard</a></p>
       <script>
@@ -597,7 +597,7 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${date}.xlsx"`);
       res.send(buffer);
     } else {
       const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
