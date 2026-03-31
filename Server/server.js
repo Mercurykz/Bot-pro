@@ -2633,17 +2633,18 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 
 <div class="content">
   <div class="topbar">
-    <h1>📋 Histórico de Chamadas</h1>
+    <h1>📋 Gerenciamento de Chamadas</h1>
   </div>
 
   <div class="card">
     <div class="form-group">
       <div style="flex: 1;">
-        <label for="date">Selecione a data</label>
+        <label for="date">Filtrar por data (opcional)</label>
         <input id="date" type="date" />
       </div>
       <button id="load">Carregar</button>
     </div>
+    <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 13px;">Carregue as chamadas já existentes para abrir ou reabrir.</p>
     <div id="result"></div>
   </div>
 
@@ -2651,40 +2652,75 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 </div>
 
 <script>
-  document.getElementById('load').addEventListener('click', async () => {
-    const date = document.getElementById('date').value;
-    if (!date) return alert('Selecione uma data');
-    
-    const resp = await fetch('/chamadas/api/' + date);
-    if (!resp.ok) return alert('Falha ao carregar chamadas');
-    
-    const data = await resp.json();
+  function renderSessions(data, date) {
     const target = document.getElementById('result');
-    
+
     if (!data.length) {
-      target.innerHTML = '<div class="result-empty"><p>📭 Nenhuma chamada registrada nessa data.</p></div>';
+      target.innerHTML = '<div class="result-empty"><p>📭 Nenhuma chamada encontrada.</p></div>';
       return;
     }
-    
+
     target.innerHTML = '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(c => {
-      const time = new Date(c.start_time).toLocaleTimeString('pt-BR');
+      const dateLabel = c.start_time ? new Date(c.start_time).toLocaleString('pt-BR') : '-';
+      const status = c.active
+        ? '<span style="font-size:12px; color:#10b981;">🟢 Ativa</span>'
+        : '<span style="font-size:12px; color:var(--text-muted);">⚪ Encerrada</span>';
+      const exportDate = date || (c.start_time ? c.start_time.slice(0, 10) : 'sem-data');
+      const reopenBtn = !c.active
+        ? '<form method="POST" action="/chamadas/' + c.session_id + '/reopen" style="display:inline;margin:0;" onsubmit="return confirm(\'Deseja reabrir esta chamada?\');"><button type="submit" style="padding:8px 12px; font-size:12px;">🔄 Reabrir</button></form>'
+        : '';
+
       return \`<li>
         <div>
           <strong>\${c.name}</strong>
-          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${time}</div>
+          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ \${dateLabel}</div>
+          <div style="margin-top: 6px;">\${status}</div>
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
           <a href="/class/\${c.class_id}">Abrir</a>
-          <a href="/chamadas/\${c.session_id}/export?date=\${date}&format=xlsx">📥 Exportar</a>
+          <a href="/chamadas/\${c.session_id}/export?date=\${exportDate}&format=xlsx">📥 Exportar</a>
+          \${reopenBtn}
         </div>
       </li>\`;
     }).join('') + '</ul>';
-  });
+  }
+
+  async function loadSessions() {
+    const date = document.getElementById('date').value;
+    const endpoint = date ? '/chamadas/api/' + date : '/chamadas/api';
+    const resp = await fetch(endpoint);
+    if (!resp.ok) return alert('Falha ao carregar chamadas');
+
+    const data = await resp.json();
+    renderSessions(data, date);
+  }
+
+  document.getElementById('load').addEventListener('click', loadSessions);
+  window.addEventListener('DOMContentLoaded', loadSessions);
 </script>
 
 </body>
 </html>
   `);
+});
+
+app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const sessions = await db.query(
+      `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+       FROM class_sessions s
+       JOIN classes c ON c.id = s.class_id
+       WHERE c.professor_id = $1
+       ORDER BY s.start_time DESC
+       LIMIT 120`,
+      [req.user.id]
+    );
+    res.json(sessions.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Falha ao listar chamadas' });
+  }
 });
 
 app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req, res) => {
@@ -2741,12 +2777,53 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
       const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
 
       res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${date}.csv"`);
       res.send(csv);
     }
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao exportar chamada');
+  }
+});
+
+app.post('/chamadas/:sessionId/reopen', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('Erro: DB não conectado.');
+  const sessionId = parseInt(req.params.sessionId, 10);
+  if (!sessionId) return res.status(400).send('Sessão inválida.');
+
+  try {
+    const targetSession = await db.query(
+      `SELECT s.id, s.class_id
+       FROM class_sessions s
+       JOIN classes c ON c.id = s.class_id
+       WHERE s.id = $1 AND c.professor_id = $2`,
+      [sessionId, req.user.id]
+    );
+
+    if (!targetSession.rowCount) return res.status(404).send('Sessão não encontrada.');
+
+    const classId = targetSession.rows[0].class_id;
+
+    await db.query('BEGIN');
+    await db.query(
+      `UPDATE class_sessions
+       SET active = false, end_time = COALESCE(end_time, NOW())
+       WHERE class_id = $1 AND active = true AND id <> $2`,
+      [classId, sessionId]
+    );
+    await db.query(
+      `UPDATE class_sessions
+       SET active = true, end_time = NULL
+       WHERE id = $1`,
+      [sessionId]
+    );
+    await db.query('COMMIT');
+
+    res.redirect(`/class/${classId}`);
+  } catch (err) {
+    try { await db.query('ROLLBACK'); } catch (_) {}
+    console.error('Erro ao reabrir chamada:', err);
+    res.status(500).send('Erro ao reabrir chamada');
   }
 });
 
