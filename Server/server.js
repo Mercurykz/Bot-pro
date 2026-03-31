@@ -40,10 +40,14 @@ app.use(express.urlencoded({ extended: true }));
         id SERIAL PRIMARY KEY,
         class_id INTEGER REFERENCES classes(id),
         student_id TEXT REFERENCES users(id),
+        student_name TEXT,
         login_at TIMESTAMPTZ NOT NULL,
         UNIQUE (class_id, student_id)
       );
     `);
+
+    // Garante campo student_name
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
     console.log('DB initialized');
   } catch (err) {
     console.error('Erro ao inicializar DB:', err);
@@ -374,12 +378,18 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
   }
 });
 
-app.post('/class/:id/join', ensureAuthenticated, ensureAluno, async (req, res) => {
+app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded({ extended: true }), async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
+  const fullName = req.body.fullName?.trim();
+
+  if (!fullName) {
+    return res.status(400).send('Informe seu nome completo para registrar presença.');
+  }
+
   try {
-    await db.query(`INSERT INTO attendances (class_id, student_id, login_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
-      [classId, req.user.id]);
+    await db.query(`INSERT INTO attendances (class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (class_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
+      [classId, req.user.id, fullName]);
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
@@ -420,9 +430,22 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
       <p>Status: ${classData.active ? 'Ativa' : 'Encerrada'}</p>
       <h2>Presenças (Atualização a cada 5s)</h2>
       <ul id="attendance-list">
-        ${members.map(m => `<li>${m.username} (${new Date(m.login_at).toLocaleString()})</li>`).join('')}
+        ${members.map(m => `<li>${m.student_name || m.username} (${new Date(m.login_at).toLocaleString()})</li>`).join('')}
       </ul>
-      ${req.user.role === 'aluno' && classData.active ? `<form method="POST" action="/class/${classId}/join"><button>Registrar presença</button></form>` : ''}
+
+      ${req.user.role === 'aluno' && classData.active ? `<form method="POST" action="/class/${classId}/join">
+        <label>Nome completo: <input name="fullName" required placeholder="Nome completo" /></label>
+        <button>Registrar presença</button>
+      </form>` : ''}
+
+      ${req.user.role === 'professor' && classData.active ? `<form method="POST" action="/class/${classId}/mark">
+        <label>Marcar presença por nome: <input name="fullName" required placeholder="Nome completo do aluno" /></label>
+        <button>Marcar presença</button>
+      </form>
+      <form method="POST" action="/class/${classId}/end" style="margin-top: 10px;">
+        <button>Encerrar chamada</button>
+      </form>` : ''}
+
       <h2>Timeline do professor</h2>
       <ul>
         ${timeline.rows.map(t => `<li>${t.name} - ${t.total_presencas} alunos - ${t.active ? 'Ativa' : 'Encerrada'}</li>`).join('')}
@@ -490,6 +513,27 @@ app.post('/class/:id/end', ensureAuthenticated, ensureProfessor, async (req, res
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao encerrar classe');
+  }
+});
+
+app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const classId = req.params.id;
+  const fullName = req.body.fullName?.trim();
+
+  if (!fullName) return res.status(400).send('Informe o nome completo do aluno para marcar presença.');
+
+  try {
+    await db.query(`INSERT INTO attendances (class_id, student_id, student_name, login_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (class_id, student_id) DO UPDATE SET student_name = EXCLUDED.student_name`,
+      [classId, null, fullName]
+    );
+
+    res.redirect(`/class/${classId}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao registrar presença por nome');
   }
 });
 
