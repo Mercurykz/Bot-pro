@@ -19,7 +19,7 @@ app.use(express.urlencoded({ extended: true }));
   try {
     // Testa conexão
     await db.query('SELECT 1');
-    console.log('DB conectado com sucesso.');
+    console.log('✅ DB conectado com sucesso.');
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -58,18 +58,60 @@ app.use(express.urlencoded({ extended: true }));
       );
     `);
 
-    // Garante colunas do novo modelo de sessão e compatibilidade retroativa
+    // Garante colunas do novo modelo de sessão
+    console.log('📋 Verificando migração de colunas...');
+    
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS subject_id INTEGER REFERENCES subjects(id)`);
+    console.log('  ✓ classes.subject_id OK');
+    
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
+    console.log('  ✓ classes.active OK');
+    
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    console.log('  ✓ classes.started_at OK');
+    
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`);
-    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
-    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
+    console.log('  ✓ classes.end_time OK');
+    
+    // Verificar se a coluna class_session_id existe antes de tentar usá-la
+    const classSessionIdExists = await db.query(`
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_name = 'attendances' AND column_name = 'class_session_id'
+    `);
+    
+    if (!classSessionIdExists.rowCount) {
+      console.log('  ⚠ Criando attendances.class_session_id...');
+      await db.query(`ALTER TABLE attendances ADD COLUMN class_session_id INTEGER REFERENCES class_sessions(id)`);
+      console.log('  ✓ attendances.class_session_id criada');
+    } else {
+      console.log('  ✓ attendances.class_session_id já existe');
+    }
+    
+    // Verificar se a coluna student_name existe
+    const studentNameExists = await db.query(`
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_name = 'attendances' AND column_name = 'student_name'
+    `);
+    
+    if (!studentNameExists.rowCount) {
+      console.log('  ⚠ Criando attendances.student_name...');
+      await db.query(`ALTER TABLE attendances ADD COLUMN student_name TEXT`);
+      console.log('  ✓ attendances.student_name criada');
+    } else {
+      console.log('  ✓ attendances.student_name já existe');
+    }
+    
+    // Criar índices
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
+    console.log('  ✓ attendances_class_session_student_idx OK');
+    
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
-    console.log('DB initialized');
+    console.log('  ✓ attendances_class_session_name_idx OK');
+    
+    console.log('✅ DB initialized com sucesso!');
   } catch (err) {
-    console.error('Erro ao inicializar DB:', err);
+    console.error('❌ Erro ao inicializar DB:', err.message);
+    console.error(err);
   }
 })();
 
@@ -86,6 +128,52 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+
+// Diagnóstico do banco (apenas admin)
+app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.json({ error: 'DB não conectado' });
+  
+  try {
+    // Verificar colunas da tabela attendances
+    const attendancesSchema = await db.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'attendances' 
+      ORDER BY ordinal_position
+    `);
+    
+    // Verificar índices
+    const indexes = await db.query(`
+      SELECT indexname, indexdef 
+      FROM pg_indexes 
+      WHERE tablename = 'attendances'
+    `);
+    
+    // Contar registros
+    const counts = await db.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM users) as users,
+        (SELECT COUNT(*) FROM subjects) as subjects,
+        (SELECT COUNT(*) FROM classes) as classes,
+        (SELECT COUNT(*) FROM class_sessions) as sessions,
+        (SELECT COUNT(*) FROM attendances) as attendances
+    `);
+    
+    res.json({
+      status: 'ok',
+      attendances_columns: attendancesSchema.rows,
+      indexes: indexes.rows,
+      counts: counts.rows[0],
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+      code: err.code,
+      details: err.detail
+    });
+  }
+});
 
 // HOME
 app.get('/', (req, res) => {
@@ -1808,7 +1896,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     let members = [];
     if (activeSession) {
       const attendances = await db.query(
-        `SELECT a.*, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY login_at ASC`,
+        `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
         [activeSession.id]
       );
       members = attendances.rows;
@@ -2364,10 +2452,11 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
       `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
       [sessionId]
     );
+    console.log('[DEBUG] /class/:id/attendees - sessionId:', sessionId, 'rowCount:', attendances.rowCount);
     res.json(attendances.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Falha ao buscar participantes' });
+    console.error('[ERROR] /class/:id/attendees:', err.message);
+    res.status(500).json({ error: 'Falha ao buscar participantes', details: err.message });
   }
 });
 
