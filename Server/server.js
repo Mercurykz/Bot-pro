@@ -1177,52 +1177,249 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Minhas Matérias | Presença Plus</title>
+  <title>Presença Plus | Minhas Matérias</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Poppins,sans-serif;background:#0f172a;color:#f1f5f9;display:flex;min-height:100vh}
-    .sidebar{width:280px;background:#020617;border-right:1px solid #334155;padding:24px}
-    .sidebar h2{margin-bottom:16px}
-    .nav a,.subjects a{display:flex;justify-content:space-between;padding:10px 12px;border-radius:8px;color:#94a3b8;text-decoration:none;margin-bottom:8px}
-    .nav a:hover,.subjects a:hover,.subjects a.active{background:#1e293b;color:#f1f5f9}
-    .content{flex:1;padding:30px}
-    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
-    .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px}
-    .layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
-    ul{list-style:none}
-    li{padding:12px 0;border-bottom:1px solid #334155;display:flex;justify-content:space-between;gap:10px}
-    @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{width:100%}body{flex-direction:column}}
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --bg-dark: #0f172a;
+      --bg-darker: #020617;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+    }
+
+    .light {
+      --bg-dark: #f8fafc;
+      --bg-darker: #f1f5f9;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
+
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
+
+    body { display: flex; }
+
+    .sidebar {
+      width: 280px;
+      background: var(--bg-darker);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .user-info {
+      background: var(--card-dark);
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border-left: 4px solid var(--primary);
+    }
+
+    .user-info p:last-child {
+      margin-top: 6px;
+      display: inline-block;
+      font-size: 12px;
+      background: var(--primary);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    .nav-menu { list-style: none; }
+    .nav-menu li { margin-bottom: 10px; }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      border-left: 3px solid transparent;
+      transition: all .25s;
+    }
+
+    .nav-menu a:hover,
+    .nav-menu a.active-link {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .theme-btn {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-light);
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 22px;
+    }
+
+    .metric h2 {
+      font-size: 34px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .metric p {
+      color: var(--text-muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+    }
+
+    ul { list-style: none; }
+
+    .subject-menu a {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      margin-bottom: 8px;
+      border-left: 3px solid transparent;
+      transition: all .25s;
+    }
+
+    .subject-menu a:hover,
+    .subject-menu a.active {
+      background: var(--bg-darker);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .history-list li {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .history-list li:last-child { border-bottom: none; }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .sidebar { position: static; width: 100%; height: auto; }
+      .content { margin-left: 0; padding: 20px; }
+    }
   </style>
 </head>
 <body>
   <div class="sidebar">
     <h2>✨ Presença Plus</h2>
-    <div class="nav">
-      <a href="/minhas-materias">📊 Minhas Matérias</a>
-      <a href="/classes">🏫 Salas de Aula</a>
-      <a href="/logout">🚪 Sair</a>
+
+    <div class="user-info">
+      <p>${req.user.username}</p>
+      <p>👨‍🎓 Aluno</p>
     </div>
+
+    <ul class="nav-menu">
+      <li><a href="/dashboard">📊 Dashboard</a></li>
+      <li><a href="/minhas-materias" class="active-link">📚 Minhas Matérias</a></li>
+      <li><a href="/classes">🏫 Salas de Aula</a></li>
+      <li><a href="/logout">🚪 Sair</a></li>
+    </ul>
   </div>
+
   <div class="content">
-    <h1 style="margin-bottom:6px;">Frequência por Matéria</h1>
-    <p style="color:#94a3b8;margin-bottom:16px;">Aluno: ${req.user.username}</p>
-    <div class="cards">
-      <div class="card"><h2>${totalAttended}</h2><p>Presenças registradas</p></div>
-      <div class="card"><h2>${frequency}%</h2><p>Frequência geral</p></div>
-      <div class="card"><h2>${subjectRows.length}</h2><p>Matérias no histórico</p></div>
+    <div class="topbar">
+      <div>
+        <h1>Minha Frequência por Matéria</h1>
+        <p style="color:var(--text-muted); margin-top:4px;">Acompanhe suas presenças por disciplina.</p>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">🌙</button>
     </div>
+
+    <div class="grid">
+      <div class="card metric"><h2>${totalAttended}</h2><p>Presenças registradas</p></div>
+      <div class="card metric"><h2>${frequency}%</h2><p>Frequência geral</p></div>
+      <div class="card metric"><h2>${subjectRows.length}</h2><p>Matérias no histórico</p></div>
+    </div>
+
     <div class="layout">
       <div class="card">
-        <h3 style="margin-bottom:10px;">📚 Menu de Matérias</h3>
-        <ul class="subjects">${subjectMenu || '<li style="color:#94a3b8;">Sem matérias ainda.</li>'}</ul>
+        <h2 style="margin-bottom:12px;">📚 Menu de Matérias</h2>
+        <ul class="subject-menu">${subjectMenu || '<li style="color:var(--text-muted);">Sem matérias ainda.</li>'}</ul>
       </div>
+
       <div class="card">
-        <h3 style="margin-bottom:10px;">🧾 Presenças ${selectedRow ? `- ${selectedRow.subject_name}` : ''}</h3>
-        <ul>${historyList || '<li style="color:#94a3b8;">Nenhuma presença para esta matéria.</li>'}</ul>
+        <h2 style="margin-bottom:12px;">🧾 Presenças ${selectedRow ? `- ${selectedRow.subject_name}` : ''}</h2>
+        <ul class="history-list">${historyList || '<li style="color:var(--text-muted);">Nenhuma presença para esta matéria.</li>'}</ul>
       </div>
     </div>
   </div>
+
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.documentElement.classList.add('light');
+}
+</script>
 </body>
 </html>
     `);
@@ -1249,19 +1446,78 @@ app.get('/guild/:id', async (req, res) => {
     const rows = result.rows;
 
     const lista = rows.map(r => `
-      <tr>
-        <td>${r.username}</td>
-        <td>${new Date(r.data).toLocaleString()}</td>
-      </tr>
+      <li>
+        <span><strong>${r.username}</strong></span>
+        <span style="color: var(--text-muted);">${new Date(r.data).toLocaleString('pt-BR')}</span>
+      </li>
     `).join('');
 
     res.send(`
-      <h1>📊 Presenças</h1>
-      <table border="1">
-        <tr><th>Usuário</th><th>Data</th></tr>
-        ${lista}
-      </table>
-      <p>Total: ${rows.length}</p>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Presença Plus | Guild ${guildId}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{--primary:#6366f1;--secondary:#8b5cf6;--bg-dark:#0f172a;--bg-darker:#020617;--card-dark:#1e293b;--text-light:#f1f5f9;--text-muted:#94a3b8;--border-color:#334155}
+    .light{--bg-dark:#f8fafc;--bg-darker:#f1f5f9;--card-dark:#fff;--text-light:#1e293b;--text-muted:#64748b;--border-color:#e2e8f0}
+    html,body{font-family:Poppins,sans-serif;background:var(--bg-dark);color:var(--text-light);min-height:100vh}
+    body{display:flex}
+    .sidebar{width:280px;background:var(--bg-darker);border-right:1px solid var(--border-color);padding:30px 20px;position:fixed;height:100vh}
+    .sidebar h2{font-size:24px;margin-bottom:20px;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .nav-menu{list-style:none}.nav-menu li{margin-bottom:10px}
+    .nav-menu a{display:block;padding:12px 16px;color:var(--text-muted);text-decoration:none;border-radius:8px;border-left:3px solid transparent;transition:.25s}
+    .nav-menu a:hover{background:var(--card-dark);color:var(--text-light);border-left-color:var(--primary)}
+    .content{margin-left:280px;flex:1;padding:40px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+    .theme-btn{background:var(--card-dark);border:1px solid var(--border-color);color:var(--text-light);padding:10px 14px;border-radius:8px;cursor:pointer}
+    .card{background:var(--card-dark);border:1px solid var(--border-color);border-radius:14px;padding:24px}
+    ul{list-style:none}
+    li{padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;gap:10px}
+    li:last-child{border-bottom:none}
+    @media (max-width:768px){body{flex-direction:column}.sidebar{position:static;width:100%;height:auto}.content{margin-left:0;padding:20px}}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>✨ Presença Plus</h2>
+    <ul class="nav-menu">
+      <li><a href="/dashboard">📊 Dashboard</a></li>
+      <li><a href="/classes">🏫 Salas de Aula</a></li>
+      ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
+      ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+      ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
+      <li><a href="/logout">🚪 Sair</a></li>
+    </ul>
+  </div>
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h1>📊 Presenças da Guild ${guildId}</h1>
+        <p style="color:var(--text-muted);margin-top:4px;">Total de registros: ${rows.length}</p>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">🌙</button>
+    </div>
+
+    <div class="card">
+      <ul>${lista || '<li style="color:var(--text-muted);">Nenhum registro encontrado</li>'}</ul>
+    </div>
+  </div>
+
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.documentElement.classList.add('light');
+}
+</script>
+</body>
+</html>
     `);
 
   } catch (err) {
@@ -1331,15 +1587,88 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
     const subjectsRes = await db.query('SELECT * FROM subjects ORDER BY name');
-    const rows = subjectsRes.rows.map(s => `<li>${s.name}</li>`).join('');
+    const rows = subjectsRes.rows.map(s => `<li><span>📘 ${s.name}</span></li>`).join('');
     res.send(`
-      <!doctype html>
-      <html lang="pt-BR"><head><meta charset="utf-8"><title>Matérias</title></head><body>
-      <h1>Matérias</h1>
-      <ul>${rows || '<li>Nenhuma matéria cadastrada</li>'}</ul>
-      <form method="POST" action="/subject/create"><input name="name" placeholder="Nova matéria" required /><button type="submit">Criar Matéria</button></form>
-      <a href="/classes">Voltar às Salas</a>
-      </body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Presença Plus | Matérias</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root { --primary:#6366f1; --secondary:#8b5cf6; --bg-dark:#0f172a; --bg-darker:#020617; --card-dark:#1e293b; --text-light:#f1f5f9; --text-muted:#94a3b8; --border-color:#334155; }
+    .light { --bg-dark:#f8fafc; --bg-darker:#f1f5f9; --card-dark:#ffffff; --text-light:#1e293b; --text-muted:#64748b; --border-color:#e2e8f0; }
+    html, body { font-family:'Poppins',sans-serif; background:var(--bg-dark); color:var(--text-light); min-height:100vh; }
+    body { display:flex; }
+    .sidebar { width:280px; background:var(--bg-darker); border-right:1px solid var(--border-color); padding:30px 20px; position:fixed; height:100vh; overflow-y:auto; }
+    .sidebar h2 { font-size:24px; margin-bottom:20px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .nav-menu { list-style:none; }
+    .nav-menu li { margin-bottom:10px; }
+    .nav-menu a { display:block; padding:12px 16px; color:var(--text-muted); text-decoration:none; border-radius:8px; border-left:3px solid transparent; transition:all .25s; }
+    .nav-menu a:hover { background:var(--card-dark); color:var(--text-light); border-left-color:var(--primary); }
+    .content { margin-left:280px; flex:1; padding:40px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+    .theme-btn { background:var(--card-dark); border:1px solid var(--border-color); color:var(--text-light); padding:10px 14px; border-radius:8px; cursor:pointer; }
+    .card { background:var(--card-dark); border:1px solid var(--border-color); border-radius:14px; padding:24px; margin-bottom:18px; }
+    ul { list-style:none; }
+    li { padding:12px 0; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; }
+    li:last-child { border-bottom:none; }
+    form { display:flex; gap:10px; margin-top:12px; }
+    input { flex:1; padding:12px 14px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-darker); color:var(--text-light); }
+    button { padding:12px 16px; border:none; border-radius:8px; background:linear-gradient(135deg,var(--primary),var(--secondary)); color:#fff; font-weight:600; cursor:pointer; }
+    @media (max-width:768px) { body{flex-direction:column;} .sidebar{position:static;width:100%;height:auto;} .content{margin-left:0;padding:20px;} form{flex-direction:column;} }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>✨ Presença Plus</h2>
+    <ul class="nav-menu">
+      <li><a href="/dashboard">📊 Dashboard</a></li>
+      <li><a href="/classes">🏫 Salas de Aula</a></li>
+      ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
+      ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+      ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
+      <li><a href="/logout">🚪 Sair</a></li>
+    </ul>
+  </div>
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h1>📚 Matérias</h1>
+        <p style="color:var(--text-muted);margin-top:4px;">Gerencie as matérias da plataforma.</p>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">🌙</button>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:12px;">Lista de matérias</h2>
+      <ul>${rows || '<li style="color:var(--text-muted);">Nenhuma matéria cadastrada</li>'}</ul>
+    </div>
+
+    ${(req.user.role === 'professor' || req.user.role === 'admin') ? `
+    <div class="card">
+      <h2 style="margin-bottom:12px;">➕ Nova matéria</h2>
+      <form method="POST" action="/subject/create">
+        <input name="name" placeholder="Nome da matéria" required />
+        <button type="submit">Criar Matéria</button>
+      </form>
+    </div>
+    ` : ''}
+  </div>
+
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.documentElement.classList.add('light');
+}
+</script>
+</body>
+</html>
     `);
   } catch (err) {
     console.error(err);
