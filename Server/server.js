@@ -1155,11 +1155,14 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
     historySql += ` ORDER BY cs.start_time DESC LIMIT 50`;
     const history = await db.query(historySql, historyParams);
 
-    const subjectMenu = subjectRows.map(s => {
+    const subjectCards = subjectRows.map(s => {
       const key = s.subject_id === null ? 'none' : String(s.subject_id);
-      const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
       const isActive = selectedRow && ((selectedRow.subject_id === null && s.subject_id === null) || selectedRow.subject_id === s.subject_id);
-      return `<li><a href="/minhas-materias?subject=${key}" class="${isActive ? 'active' : ''}">📘 ${s.subject_name} <strong>${pct}%</strong></a></li>`;
+      return `<a href="/minhas-materias?subject=${key}" class="subject-card ${isActive ? 'active' : ''}">
+        <div class="subject-title">📘 ${s.subject_name}</div>
+        <div class="subject-count">${s.attended_sessions} presença${s.attended_sessions === 1 ? '' : 's'}</div>
+        <div class="subject-sub">${s.total_sessions} aula${s.total_sessions === 1 ? '' : 's'} registrada${s.total_sessions === 1 ? '' : 's'}</div>
+      </a>`;
     }).join('');
 
     const historyList = history.rows.map(h => `<li>
@@ -1169,7 +1172,6 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
 
     const totalAttended = subjectRows.reduce((sum, s) => sum + s.attended_sessions, 0);
     const totalSessions = subjectRows.reduce((sum, s) => sum + s.total_sessions, 0);
-    const frequency = totalSessions > 0 ? ((totalAttended / totalSessions) * 100).toFixed(1) : '0.0';
 
     res.send(`
 <!DOCTYPE html>
@@ -1325,24 +1327,47 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
 
     ul { list-style: none; }
 
-    .subject-menu a {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      color: var(--text-muted);
+    .subject-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+
+    .subject-card {
+      display: block;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-darker);
+      color: var(--text-light);
       text-decoration: none;
-      margin-bottom: 8px;
-      border-left: 3px solid transparent;
       transition: all .25s;
     }
 
-    .subject-menu a:hover,
-    .subject-menu a.active {
-      background: var(--bg-darker);
-      color: var(--text-light);
-      border-left-color: var(--primary);
+    .subject-card:hover,
+    .subject-card.active {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 8px 18px rgba(99, 102, 241, 0.15);
+    }
+
+    .subject-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .subject-count {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subject-sub {
+      color: var(--text-muted);
+      font-size: 12px;
     }
 
     .history-list li {
@@ -1394,14 +1419,14 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
 
     <div class="grid">
       <div class="card metric"><h2>${totalAttended}</h2><p>Presenças registradas</p></div>
-      <div class="card metric"><h2>${frequency}%</h2><p>Frequência geral</p></div>
+      <div class="card metric"><h2>${totalSessions}</h2><p>Aulas registradas</p></div>
       <div class="card metric"><h2>${subjectRows.length}</h2><p>Matérias no histórico</p></div>
     </div>
 
     <div class="layout">
       <div class="card">
-        <h2 style="margin-bottom:12px;">📚 Menu de Matérias</h2>
-        <ul class="subject-menu">${subjectMenu || '<li style="color:var(--text-muted);">Sem matérias ainda.</li>'}</ul>
+        <h2 style="margin-bottom:12px;">📚 Matérias</h2>
+        <div class="subject-grid">${subjectCards || '<div style="color:var(--text-muted);">Sem matérias ainda.</div>'}</div>
       </div>
 
       <div class="card">
