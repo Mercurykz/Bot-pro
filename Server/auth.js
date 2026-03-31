@@ -2,13 +2,33 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const db = require('./database');
 
+function resolveCallbackUrl() {
+  const fromEnv = (process.env.CALLBACK_URL || process.env.DISCORD_CALLBACK_URL || '').trim();
+  if (fromEnv) return fromEnv;
+
+  const appUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+  if (appUrl) return `${appUrl}/callback`;
+
+  const railwayDomain = (process.env.RAILWAY_PUBLIC_DOMAIN || '').trim();
+  if (railwayDomain) return `https://${railwayDomain}/callback`;
+
+  return null;
+}
+
+const callbackURL = resolveCallbackUrl();
+if (!callbackURL) {
+  console.error('⚠️ CALLBACK_URL não definido. Defina CALLBACK_URL ou APP_URL no ambiente.');
+} else {
+  console.log('🔗 OAuth callbackURL em uso:', callbackURL);
+}
+
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((obj, done) => done(null, obj));
 
 passport.use(new DiscordStrategy({
   clientID: process.env.CLIENT_ID,
   clientSecret: process.env.CLIENT_SECRET,
-  callbackURL: process.env.CALLBACK_URL,
+  callbackURL,
   scope: ['identify', 'guilds', 'guilds.members.read'],
   state: true
 },
