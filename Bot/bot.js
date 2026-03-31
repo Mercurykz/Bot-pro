@@ -2,6 +2,18 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 
+console.log('🚀 Iniciando bot Discord...');
+
+const BOT_TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
+if (!BOT_TOKEN) {
+  console.error('❌ TOKEN/DISCORD_TOKEN não configurado. O bot não pode iniciar.');
+  process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+  console.warn('⚠️ DATABASE_URL não configurado. O comando /presenca pode falhar.');
+}
+
 // 🔥 cria cliente
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -12,6 +24,18 @@ const cooldown = new Map();
 
 client.once(Events.ClientReady, () => {
   console.log(`🤖 Bot logado como ${client.user.tag}`);
+});
+
+client.on('error', (error) => {
+  console.error('❌ Erro no cliente Discord:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -144,4 +168,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.login(process.env.TOKEN || process.env.DISCORD_TOKEN);
+client.login(BOT_TOKEN);
