@@ -222,6 +222,7 @@ button {
   <p>${req.user.username} (${req.user.role || 'sem role'})</p>
   <p><a href="/dashboard" style="color: #fff;">Visão Geral</a></p>
   <p><a href="/classes" style="color: #fff;">Salas de Aula</a></p>
+  ${req.user.role === 'professor' ? '<p><a href="/chamadas" style="color: #fff;">Chamadas</a></p>' : ''}
   <p><a href="/logout" style="color: #fff;">Sair</a></p>
 </div>
 
@@ -472,13 +473,80 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   const classId = req.params.id;
   try {
     const attendances = await db.query(
-      `SELECT u.username, a.login_at FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+      `SELECT u.username, a.student_name, a.login_at FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
       [classId]
     );
     res.json(attendances.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Falha ao buscar participantes' });
+  }
+});
+
+app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
+  res.send(`
+    <h1>Chamadas</h1>
+    <p>Selecione a data para ver as salas:</p>
+    <input id="date" type="date" />
+    <button id="load">Carregar</button>
+    <div id="result"></div>
+    <script>
+      document.getElementById('load').addEventListener('click', async () => {
+        const date = document.getElementById('date').value;
+        if (!date) return alert('Selecione uma data');
+        const resp = await fetch('/chamadas/api/' + date);
+        if (!resp.ok) return alert('Falha ao carregar chamadas');
+        const data = await resp.json();
+        const target = document.getElementById('result');
+        if (!data.length) return target.innerHTML = '<p>Nenhuma chamada nessa data.</p>';
+        target.innerHTML = '<h2>Salas</h2><ul>' + data.map(c =>
+          '<li>' + c.name + ' (' + (c.active ? 'Ativa' : 'Encerrada') + ') - <a href="/class/' + c.id + '">Abrir</a> - <a href="/chamadas/' + c.id + '/export?date=' + date + '">Exportar Excel</a></li>'
+        ).join('') + '</ul>';
+      });
+    </script>
+    <p><a href="/dashboard">Voltar</a></p>
+  `);
+});
+
+app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  const date = req.params.date; // YYYY-MM-DD
+  try {
+    const classes = await db.query(
+      `SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 AND DATE(started_at) = $2 ORDER BY started_at DESC`,
+      [req.user.id, date]
+    );
+    res.json(classes.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Falha ao listar chamadas' });
+  }
+});
+
+app.get('/chamadas/:classId/export', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('Erro: DB não conectado.');
+  const classId = req.params.classId;
+  const date = req.query.date;
+  try {
+    const classResult = await db.query(`SELECT id, name FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+    if (!classResult.rowCount) return res.status(404).send('Classe não encontrada');
+
+    const classData = classResult.rows[0];
+
+    const attendances = await db.query(
+      `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+      [classId]
+    );
+
+    const rows = attendances.rows;
+    const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
+    res.setHeader('Content-Disposition', `attachment; filename="chamada-${classData.name.replace(/\s/g,'_')}-${date}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao exportar chamada');
   }
 });
 
