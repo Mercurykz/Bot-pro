@@ -136,7 +136,13 @@ app.get('/dashboard', async (req, res) => {
     }
 
     const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
-      `SELECT DISTINCT c.id, c.name, u.username as professor_name FROM class_sessions s JOIN classes c ON c.id = s.class_id JOIN users u ON u.id = c.professor_id WHERE s.active = true ORDER BY s.start_time DESC`)
+      `SELECT c.id, c.name, u.username as professor_name, MAX(s.start_time) as last_start_time
+       FROM class_sessions s
+       JOIN classes c ON c.id = s.class_id
+       JOIN users u ON u.id = c.professor_id
+       WHERE s.active = true
+       GROUP BY c.id, c.name, u.username
+       ORDER BY last_start_time DESC`)
       : null;
 
     const classesHtml = req.user.role === 'professor'
