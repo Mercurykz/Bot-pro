@@ -80,8 +80,145 @@ app.use(passport.session());
 // HOME
 app.get('/', (req, res) => {
   res.send(`
-  <h1>🚀 Sistema SaaS de Presença</h1>
-  <a href="/login">Login com Discord</a>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Sistema de Presença Discord</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f1f5f9;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 500px;
+      padding: 40px 20px;
+    }
+
+    .logo {
+      font-size: 60px;
+      margin-bottom: 20px;
+      display: inline-block;
+    }
+
+    h1 {
+      font-size: 40px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    p {
+      font-size: 16px;
+      color: #94a3b8;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+
+    .features {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 40px;
+      text-align: left;
+    }
+
+    .feature {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .feature-icon {
+      font-size: 24px;
+    }
+
+    .feature-text {
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 16px 40px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      text-decoration: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn:active {
+      transform: translateY(-1px);
+    }
+
+    .footer {
+      margin-top: 40px;
+      font-size: 12px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">✨</div>
+    <h1>Presença Plus</h1>
+    <p>Sistema inteligente de presença integrado com Discord</p>
+    
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <div class="feature-text">Controle de presença em tempo real</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🏫</div>
+        <div class="feature-text">Gerenciamento de múltiplas salas</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📋</div>
+        <div class="feature-text">Relatórios e exportação em CSV/XLSX</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">👥</div>
+        <div class="feature-text">Integração com Discord</div>
+      </div>
+    </div>
+
+    <a href="/login" class="btn">Entrar com Discord</a>
+
+    <div class="footer">
+      <p>© 2026 Presença Plus. Todos os direitos reservados.</p>
+    </div>
+  </div>
+</body>
+</html>
   `);
 });
 
@@ -171,81 +308,381 @@ app.get('/dashboard', async (req, res) => {
 
     res.send(`
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presença Plus | Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 
 <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 :root {
-  --bg: #0f172a;
-  --card: #1e293b;
-  --text: white;
+  --primary: #6366f1;
+  --secondary: #8b5cf6;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --bg-dark: #0f172a;
+  --bg-darker: #020617;
+  --card-dark: #1e293b;
+  --text-light: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
 }
 
 .light {
-  --bg: #f1f5f9;
-  --card: white;
-  --text: black;
+  --primary: #6366f1;
+  --secondary: #8b5cf6;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --bg-dark: #f8fafc;
+  --bg-darker: #f1f5f9;
+  --card-dark: #ffffff;
+  --text-light: #1e293b;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+}
+
+html, body {
+  font-family: 'Poppins', sans-serif;
+  background: var(--bg-dark);
+  color: var(--text-light);
+  height: 100%;
 }
 
 body {
-  margin: 0;
-  font-family: 'Inter', sans-serif;
-  background: var(--bg);
-  color: var(--text);
   display: flex;
-  transition: 0.3s;
 }
 
 .sidebar {
-  width: 250px;
-  background: #020617;
-  padding: 20px;
+  width: 280px;
+  background: var(--bg-darker);
+  border-right: 1px solid var(--border-color);
+  padding: 30px 20px;
+  overflow-y: auto;
+  position: fixed;
+  height: 100vh;
+}
+
+.sidebar h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.user-info {
+  background: var(--card-dark);
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border-left: 4px solid var(--primary);
+}
+
+.user-info p:first-child {
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.user-info p:last-child {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-top: 5px;
+}
+
+.nav-menu {
+  list-style: none;
+  margin-bottom: 20px;
+}
+
+.nav-menu li {
+  margin-bottom: 10px;
+}
+
+.nav-menu a {
+  display: block;
+  padding: 12px 16px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  border-left: 3px solid transparent;
+}
+
+.nav-menu a:hover {
+  background: var(--card-dark);
+  color: var(--text-light);
+  border-left-color: var(--primary);
+}
+
+.nav-menu a.logout {
+  color: var(--danger);
 }
 
 .content {
+  margin-left: 280px;
   flex: 1;
-  padding: 30px;
+  padding: 40px;
+  overflow-y: auto;
+  max-height: 100vh;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 40px;
 }
 
-.card {
-  background: var(--card);
-  padding: 20px;
-  border-radius: 16px;
-  margin-bottom: 20px;
-  transition: 0.3s;
+.topbar h1 {
+  font-size: 32px;
+  font-weight: 700;
 }
 
-.card:hover {
-  transform: translateY(-5px);
+.theme-btn {
+  background: var(--card-dark);
+  border: 1px solid var(--border-color);
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.3s;
+}
+
+.theme-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 20px;
+  margin-bottom: 40px;
+}
+
+.card {
+  background: var(--card-dark);
+  border: 1px solid var(--border-color);
+  padding: 24px;
+  border-radius: 14px;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
 }
 
 .metric {
-  flex: 1;
   text-align: center;
 }
 
 .metric h2 {
-  font-size: 30px;
+  font-size: 36px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+}
+
+.metric p {
+  color: var(--text-muted);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.card h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+ul {
+  list-style: none;
+}
+
+li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+li:last-child {
+  border-bottom: none;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+a:hover {
+  color: var(--secondary);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-active {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.status-inactive {
+  background: rgba(100, 116, 139, 0.2);
+  color: var(--text-muted);
+}
+
+form {
+  background: var(--card-dark);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+form input,
+form label {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+form input {
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-darker);
+  color: var(--text-light);
+  border-radius: 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+form input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+form label {
+  font-weight: 500;
+  margin-bottom: 6px;
 }
 
 button {
-  padding: 10px;
-  border-radius: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
   border: none;
+  border-radius: 8px;
   cursor: pointer;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+.chart-container {
+  background: var(--card-dark);
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+canvas {
+  max-height: 300px;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 200px;
+  }
+  .content {
+    margin-left: 200px;
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .content {
+    margin-left: 0;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-darker);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 </style>
 </head>
@@ -253,19 +690,29 @@ button {
 <body>
 
 <div class="sidebar">
-  <h2>📊 Dashboard</h2>
-  <p>${req.user.username} (${req.user.role || 'sem role'})</p>
-  <p><a href="/dashboard" style="color: #fff;">Visão Geral</a></p>
-  <p><a href="/classes" style="color: #fff;">Salas de Aula</a></p>
-  ${req.user.role === 'professor' ? '<p><a href="/chamadas" style="color: #fff;">Chamadas</a></p>' : ''}
-  <p><a href="/logout" style="color: #fff;">Sair</a></p>
+  <h2>✨ Presença Plus</h2>
+  
+  <div class="user-info">
+    <p>${req.user.username}</p>
+    <p>${req.user.role === 'professor' ? '👨‍🏫 Professor' : '👨‍🎓 Aluno'}</p>
+  </div>
+
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    <li><a href="/logout" class="logout">🚪 Sair</a></li>
+  </ul>
 </div>
 
 <div class="content">
 
   <div class="topbar">
-    <h1>Visão Geral</h1>
-    <button onclick="toggleTheme()">🌙 / ☀️</button>
+    <div>
+      <h1>Bem-vindo, ${req.user.username}!</h1>
+      <p style="color: var(--text-muted); margin-top: 5px;">Gerencie suas salas e presenças facilmente</p>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">🌙</button>
   </div>
 
   <div class="grid">
@@ -277,7 +724,7 @@ button {
 
     <div class="card metric">
       <h2>${valores[valores.length - 1] || 0}</h2>
-      <p>Hoje</p>
+      <p>Presenças Hoje</p>
     </div>
 
   </div>
@@ -285,41 +732,75 @@ button {
   <div class="card">
     <h2>🏫 Gerenciamento de Sala</h2>
     ${classForm}
-    <ul>${classesHtml}</ul>
+    <ul>${classesHtml || '<li style="color: var(--text-muted);">Nenhuma sala disponível</li>'}</ul>
   </div>
 
-  <div class="card">
+  <div class="chart-container">
     <h2>📈 Presenças por dia</h2>
     <canvas id="chart"></canvas>
-  </div>
-
-  <div class="card">
-    <h2>🚀 Sistema ativo</h2>
-    <p>Seu SaaS está funcionando perfeitamente.</p>
-    <img width="200" src="https://cdn-icons-png.flaticon.com/512/906/906175.png"/>
   </div>
 
 </div>
 
 <script>
 function toggleTheme() {
-  document.body.classList.toggle('light');
+  document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+}
+
+if (localStorage.getItem('theme') === 'light') {
+  document.documentElement.classList.add('light');
 }
 
 const ctx = document.getElementById('chart');
-
-new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels: ${JSON.stringify(labels)},
-    datasets: [{
-      label: 'Presenças',
-      data: ${JSON.stringify(valores)},
-      tension: 0.4,
-      fill: true
-    }]
-  }
-});
+if (ctx) {
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ${JSON.stringify(labels)},
+      datasets: [{
+        label: 'Presenças',
+        data: ${JSON.stringify(valores)},
+        tension: 0.4,
+        fill: true,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        pointBackgroundColor: '#6366f1',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          ticks: {
+            color: 'var(--text-muted)'
+          },
+          grid: {
+            color: 'var(--border-color)'
+          }
+        },
+        x: {
+          ticks: {
+            color: 'var(--text-muted)'
+          },
+          grid: {
+            color: 'var(--border-color)'
+          }
+        }
+      }
+    }
+  });
+}
 </script>
 
 </body>
