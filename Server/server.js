@@ -52,7 +52,8 @@ app.use(express.urlencoded({ extended: true }));
       );
     `);
 
-    // Garante campo student_name
+    // Garante colunas do novo modelo de sessão
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
     console.log('DB initialized');
   } catch (err) {
