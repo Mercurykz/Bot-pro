@@ -55,6 +55,7 @@ app.use(express.urlencoded({ extended: true }));
     // Garante colunas do novo modelo de sessão
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS class_session_id INTEGER REFERENCES class_sessions(id)`);
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS student_name TEXT`);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
     console.log('DB initialized');
   } catch (err) {
     console.error('Erro ao inicializar DB:', err);
