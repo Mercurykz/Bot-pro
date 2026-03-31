@@ -6,126 +6,35 @@ const db = require('./database');
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
-  secret: 'segredo',
+  secret: process.env.SESSION_SECRET || 'segredo',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+  }
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
+
 // HOME
 app.get('/', (req, res) => {
   res.send(`
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8">
-    <title>Sistema de Presença</title>
-
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-        font-family: Arial;
-      }
-
-      body {
-        background: linear-gradient(135deg, #1e3a8a, #3b82f6);
-        color: white;
-      }
-
-      header {
-        display: flex;
-        justify-content: space-between;
-        padding: 20px 60px;
-      }
-
-      .hero {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 80px;
-      }
-
-      h1 {
-        font-size: 40px;
-      }
-
-      p {
-        margin: 20px 0;
-      }
-
-      .btn {
-        background: #5865F2;
-        padding: 15px 30px;
-        border-radius: 10px;
-        color: white;
-        text-decoration: none;
-        font-weight: bold;
-      }
-
-      .cards {
-        display: flex;
-        gap: 20px;
-        padding: 40px;
-        background: white;
-        color: black;
-      }
-
-      .card {
-        background: #f1f5f9;
-        padding: 20px;
-        border-radius: 12px;
-        flex: 1;
-      }
-    </style>
-  </head>
-
-  <body>
-
-    <header>
-      <h2>✔ Sistema de Presença</h2>
-    </header>
-
-    <section class="hero">
-      <div>
-        <h1>Controle de Presença via Discord</h1>
-        <p>Gerencie alunos de forma simples e automática.</p>
-
-        <a href="/login" class="btn">
-          Login com Discord
-        </a>
-      </div>
-    </section>
-
-    <section class="cards">
-      <div class="card">
-        <h3>✔ Rápido</h3>
-        <p>Registro com comando no Discord</p>
-      </div>
-
-      <div class="card">
-        <h3>📊 Dashboard</h3>
-        <p>Visual moderno e dados em tempo real</p>
-      </div>
-
-      <div class="card">
-        <h3>📄 Relatórios</h3>
-        <p>Acompanhe presença facilmente</p>
-      </div>
-    </section>
-
-  </body>
-  </html>
+  <h1>🚀 Sistema SaaS de Presença</h1>
+  <a href="/login">Login com Discord</a>
   `);
 });
+
+
 // LOGIN
 app.get('/login', passport.authenticate('discord'));
+
 
 // CALLBACK
 app.get('/callback',
@@ -133,23 +42,35 @@ app.get('/callback',
   (req, res) => res.redirect('/dashboard')
 );
 
+
 // DASHBOARD
-app.get('/dashboard', (req, res) => {
+app.get('/dashboard', async (req, res) => {
   if (!req.user) return res.redirect('/');
 
-  db.all(`
-    SELECT DATE(data) as dia, COUNT(*) as total
-    FROM presencas
-    GROUP BY dia
-    ORDER BY dia ASC
-  `, (err, rows) => {
+  try {
 
+    // 📊 gráfico
+    const result = await db.query(`
+  SELECT 
+    DATE(data) as dia,
+    COUNT(*) as total
+  FROM presencas
+  GROUP BY DATE(data)
+  ORDER BY dia ASC
+`);
+
+    const rows = result.rows;
     const labels = rows.map(r => r.dia);
     const valores = rows.map(r => r.total);
 
-    db.get(`SELECT COUNT(*) as total FROM presencas`, (err, totalGeral) => {
+    // 📈 total geral
+    const totalResult = await db.query(`
+      SELECT COUNT(*) as total FROM presencas
+    `);
 
-      res.send(`
+    const totalGeral = totalResult.rows[0] || { total: 0 };
+
+    res.send(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -288,89 +209,57 @@ new Chart(ctx, {
       tension: 0.4,
       fill: true
     }]
-  },
-  options: {
-    plugins: {
-      legend: { display: true }
-    }
   }
 });
 </script>
 
 </body>
 </html>
-      `);
-    });
+    `);
 
-  });
+  } catch (err) {
+    console.error(err);
+    res.send('Erro no dashboard');
+  }
 });
-// PÁGINA DO SERVIDOR
-app.get('/guild/:id', (req, res) => {
+
+
+// GUILD (AGORA COM POSTGRES)
+app.get('/guild/:id', async (req, res) => {
   if (!req.user) return res.redirect('/');
 
   const guildId = req.params.id;
 
-  db.all(
-    `SELECT * FROM presencas WHERE guild_id = ?`,
-    [guildId],
-    (err, rows) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM presencas WHERE guild_id = $1`,
+      [guildId]
+    );
 
-      const lista = rows.map(r => `
-        <tr>
-          <td>${r.username}</td>
-          <td>${new Date(r.data).toLocaleString()}</td>
-        </tr>
-      `).join('');
+    const rows = result.rows;
 
-      res.send(`
-      <style>
-        body {
-          font-family: 'Segoe UI';
-          background: #0f172a;
-          color: white;
-          padding: 20px;
-        }
+    const lista = rows.map(r => `
+      <tr>
+        <td>${r.username}</td>
+        <td>${new Date(r.data).toLocaleString()}</td>
+      </tr>
+    `).join('');
 
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          background: #1e293b;
-          border-radius: 10px;
-          overflow: hidden;
-        }
-
-        th, td {
-          padding: 12px;
-        }
-
-        tr {
-          transition: 0.3s;
-        }
-
-        tr:hover {
-          background: #334155;
-        }
-
-        th {
-          background: #020617;
-        }
-      </style>
-
+    res.send(`
       <h1>📊 Presenças</h1>
-
-      <table>
-        <tr>
-          <th>Usuário</th>
-          <th>Data</th>
-        </tr>
+      <table border="1">
+        <tr><th>Usuário</th><th>Data</th></tr>
         ${lista}
       </table>
-
       <p>Total: ${rows.length}</p>
-      `);
-    }
-  );
+    `);
+
+  } catch (err) {
+    console.error(err);
+    res.send('Erro ao carregar guild');
+  }
 });
+
 // START
 const PORT = process.env.PORT || 3000;
 
