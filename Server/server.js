@@ -9,6 +9,39 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: true }));
 
+// Cria tabelas básicas se não existirem
+(async function initDb() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'aluno'
+      );
+
+      CREATE TABLE IF NOT EXISTS classes (
+        id SERIAL PRIMARY KEY,
+        professor_id TEXT REFERENCES users(id),
+        name TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT true,
+        started_at TIMESTAMPTZ NOT NULL,
+        ended_at TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS attendances (
+        id SERIAL PRIMARY KEY,
+        class_id INTEGER REFERENCES classes(id),
+        student_id TEXT REFERENCES users(id),
+        login_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (class_id, student_id)
+      );
+    `);
+    console.log('DB initialized');
+  } catch (err) {
+    console.error('Erro ao inicializar DB:', err);
+  }
+})();
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'segredo',
   resave: false,
@@ -69,6 +102,23 @@ app.get('/dashboard', async (req, res) => {
     `);
 
     const totalGeral = totalResult.rows[0] || { total: 0 };
+
+    const professorClasses = req.user.role === 'professor' ? await db.query(
+      `SELECT id, name, active, started_at FROM classes WHERE professor_id = $1 ORDER BY started_at DESC`,
+      [req.user.id]
+    ) : null;
+
+    const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
+      `SELECT c.id, c.name, u.username as professor_name FROM classes c JOIN users u ON u.id = c.professor_id WHERE c.active = true ORDER BY c.started_at DESC`)
+      : null;
+
+    const classesHtml = req.user.role === 'professor'
+      ? professorClasses.rows.map(c => `<li><a href="/class/${c.id}">${c.name}</a> - ${c.active ? 'Ativa' : 'Encerrada'} - ${new Date(c.started_at).toLocaleString()}</li>`).join('')
+      : (classesDisponiveis?.rows || []).map(c => `<li>${c.name} (Prof. ${c.professor_name}) <a href="/class/${c.id}">Entrar</a></li>`).join('');
+
+    const classForm = req.user.role === 'professor'
+      ? `<form method="POST" action="/class/start"> <input name="name" required placeholder="Nome da sala" /> <button>Iniciar chamada</button> </form>`
+      : '';
 
     res.send(`
 <!DOCTYPE html>
@@ -180,6 +230,12 @@ button {
   </div>
 
   <div class="card">
+    <h2>🏫 Gerenciamento de Sala</h2>
+    ${classForm}
+    <ul>${classesHtml}</ul>
+  </div>
+
+  <div class="card">
     <h2>📈 Presenças por dia</h2>
     <canvas id="chart"></canvas>
   </div>
@@ -257,6 +313,130 @@ app.get('/guild/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.send('Erro ao carregar guild');
+  }
+});
+
+// helpers
+function ensureAuthenticated(req, res, next) {
+  if (!req.user) return res.redirect('/');
+  return next();
+}
+
+function ensureProfessor(req, res, next) {
+  if (!req.user || req.user.role !== 'professor') {
+    return res.status(403).send('Acesso negado: apenas professores.');
+  }
+  return next();
+}
+
+function ensureAluno(req, res, next) {
+  if (!req.user || req.user.role !== 'aluno') {
+    return res.status(403).send('Acesso negado: apenas alunos.');
+  }
+  return next();
+}
+
+// endpoints de gestão de sala
+app.get('/profile', ensureAuthenticated, async (req, res) => {
+  res.redirect('/dashboard');
+});
+
+app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencoded({ extended: true }), async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).send('Nome da sala (classe) obrigatório');
+
+  try {
+    const result = await db.query(
+      `INSERT INTO classes (professor_id, name, active, started_at) VALUES ($1, $2, true, NOW()) RETURNING id`,
+      [req.user.id, name]
+    );
+    const classId = result.rows[0].id;
+    res.redirect(`/class/${classId}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao iniciar classe');
+  }
+});
+
+app.post('/class/:id/join', ensureAuthenticated, ensureAluno, async (req, res) => {
+  const classId = req.params.id;
+  try {
+    await db.query(`INSERT INTO attendances (class_id, student_id, login_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
+      [classId, req.user.id]);
+    res.redirect(`/class/${classId}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao registrar presença');
+  }
+});
+
+app.get('/class/:id', ensureAuthenticated, async (req, res) => {
+  const classId = req.params.id;
+  try {
+    const classRes = await db.query(`SELECT c.*, u.username AS professor_name FROM classes c JOIN users u ON c.professor_id = u.id WHERE c.id = $1`, [classId]);
+    if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
+
+    const classData = classRes.rows[0];
+
+    const attendances = await db.query(
+      `SELECT a.*, u.username FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY login_at ASC`,
+      [classId]
+    );
+
+    const members = attendances.rows;
+
+    // timeline do professor
+    const timeline = await db.query(
+      `SELECT c.id, c.name, c.active, c.started_at, c.ended_at, COUNT(a.id) AS total_presencas
+       FROM classes c
+       LEFT JOIN attendances a ON a.class_id = c.id
+       WHERE c.professor_id = $1
+       GROUP BY c.id
+       ORDER BY c.started_at DESC`,
+       [classData.professor_id]
+    );
+
+    res.send(`
+      <h1>Sala de Aula: ${classData.name}</h1>
+      <p>Professor: ${classData.professor_name}</p>
+      <p>Status: ${classData.active ? 'Ativa' : 'Encerrada'}</p>
+      <h2>Presenças (Atualização a cada 5s)</h2>
+      <ul id="attendance-list">
+        ${members.map(m => `<li>${m.username} (${new Date(m.login_at).toLocaleString()})</li>`).join('')}
+      </ul>
+      ${req.user.role === 'aluno' && classData.active ? `<form method="POST" action="/class/${classId}/join"><button>Registrar presença</button></form>` : ''}
+      <h2>Timeline do professor</h2>
+      <ul>
+        ${timeline.rows.map(t => `<li>${t.name} - ${t.total_presencas} alunos - ${t.active ? 'Ativa' : 'Encerrada'}</li>`).join('')}
+      </ul>
+      <p><a href="/dashboard">Voltar ao dashboard</a></p>
+      <script>
+        async function refreshAttendance() {
+          const res = await fetch('/class/${classId}/attendees');
+          const data = await res.json();
+          const list = document.getElementById('attendance-list');
+          list.innerHTML = data.map(item => '<li>' + item.username + ' (' + new Date(item.login_at).toLocaleString() + ')</li>').join('');
+        }
+        setInterval(refreshAttendance, 5000);
+      </script>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar classe');
+  }
+});
+
+app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
+  const classId = req.params.id;
+  try {
+    const attendances = await db.query(
+      `SELECT u.username, a.login_at FROM attendances a JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+      [classId]
+    );
+    res.json(attendances.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Falha ao buscar participantes' });
   }
 });
 
