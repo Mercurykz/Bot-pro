@@ -268,10 +268,6 @@ app.get('/dashboard', async (req, res) => {
 
   try {
     if (req.user.role === 'aluno') {
-      return res.redirect('/minhas-materias');
-    }
-
-    if (req.user.role === 'aluno') {
       const subjects = await db.query(`
         WITH student_classes AS (
           SELECT DISTINCT cs.class_id
