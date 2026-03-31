@@ -701,6 +701,7 @@ canvas {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout" class="logout">🚪 Sair</a></li>
   </ul>
 </div>
@@ -868,6 +869,13 @@ function ensureProfessor(req, res, next) {
 function ensureAluno(req, res, next) {
   if (!req.user || req.user.role !== 'aluno') {
     return res.status(403).send('Acesso negado: apenas alunos.');
+  }
+  return next();
+}
+
+function ensureAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).send('Acesso negado: apenas administradores.');
   }
   return next();
 }
@@ -1285,6 +1293,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
@@ -1659,6 +1668,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     <li><a href="/chamadas">📋 Chamadas</a></li>
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
@@ -2079,7 +2089,8 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
-    <li><a href="/chamadas">📋 Chamadas</a></li>
+    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
@@ -2373,6 +2384,360 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
   } catch (err) {
     console.error('Erro ao marcar presença por nome:', err);
     res.status(500).send('Erro ao registrar presença por nome');
+  }
+});
+
+app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    const sessions = await db.query(`
+      SELECT s.id, s.class_id, c.name, s.start_time, s.end_time, s.active, COUNT(a.id) as total_presencas, u.username as professor_name
+      FROM class_sessions s
+      JOIN classes c ON c.id = s.class_id
+      JOIN users u ON u.id = c.professor_id
+      LEFT JOIN attendances a ON a.class_session_id = s.id
+      GROUP BY s.id, c.name, s.class_id, u.username
+      ORDER BY s.start_time DESC
+    `);
+
+    const totalSessions = sessions.rowCount;
+    const activeSessions = sessions.rows.filter(s => s.active).length;
+    const totalAttendances = sessions.rows.reduce((sum, s) => sum + parseInt(s.total_presencas), 0);
+
+    const sessionsList = sessions.rows.map(s => `<li>
+      <div>
+        <strong>${s.name}</strong>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">
+          👨‍🏫 ${s.professor_name} | 📅 ${new Date(s.start_time).toLocaleString('pt-BR')} | 👥 ${s.total_presencas} presenças
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <span class="status-badge ${s.active ? 'active' : 'inactive'}">${s.active ? '🟢 Ativa' : '⚫ Encerrada'}</span>
+        <form method="POST" action="/admin/delete-session/${s.id}" style="display:inline; margin: 0;" onsubmit="return confirm('Tem certeza que deseja deletar esta sessão?');">
+          <button type="submit" class="btn-delete">🗑️ Deletar</button>
+        </form>
+      </div>
+    </li>`).join('');
+
+    res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presença Plus | Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --danger: #ef4444;
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --text-light: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+    }
+
+    .light {
+      --bg-dark: #f8fafc;
+      --card-dark: #ffffff;
+      --text-light: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+    }
+
+    html, body {
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+    }
+
+    body {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      border-right: 1px solid var(--border-color);
+      padding: 30px 20px;
+      height: 100vh;
+      position: fixed;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-menu {
+      list-style: none;
+    }
+
+    .nav-menu li {
+      margin-bottom: 10px;
+    }
+
+    .nav-menu a {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-menu a:hover {
+      background: var(--card-dark);
+      color: var(--text-light);
+      border-left-color: var(--primary);
+    }
+
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    .topbar {
+      margin-bottom: 40px;
+    }
+
+    .topbar h1 {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .topbar p {
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .metric-card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      text-align: center;
+    }
+
+    .metric-card h3 {
+      font-size: 36px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .metric-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      gap: 12px;
+    }
+
+    li:last-child {
+      border-bottom: none;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.active {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+    }
+
+    .status-badge.inactive {
+      background: rgba(100, 116, 139, 0.2);
+      color: var(--text-muted);
+    }
+
+    button, .btn-delete {
+      padding: 8px 14px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+      font-size: 12px;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-delete {
+      background: linear-gradient(135deg, var(--danger), #dc2626);
+      padding: 8px 12px;
+    }
+
+    .btn-delete:hover {
+      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--primary);
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: var(--border-color);
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .content {
+        margin-left: 0;
+        padding: 20px;
+      }
+      li {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Presença Plus</h2>
+  <ul class="nav-menu">
+    <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>⚙️ Painel de Administração</h1>
+    <p>Controle e gestão de todas as chamadas do sistema</p>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <h3>${totalSessions}</h3>
+      <p>Total de Sessões</p>
+    </div>
+    <div class="metric-card">
+      <h3>${activeSessions}</h3>
+      <p>Sessões Ativas</p>
+    </div>
+    <div class="metric-card">
+      <h3>${totalAttendances}</h3>
+      <p>Total de Presenças</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📋 Todas as Chamadas</h2>
+    <ul>${sessionsList || '<li style="color: var(--text-muted);">Nenhuma sessão registrada</li>'}</ul>
+  </div>
+
+  <a href="/dashboard" class="back-link">← Voltar ao Dashboard</a>
+</div>
+
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar dashboard admin');
+  }
+});
+
+app.post('/admin/delete-session/:sessionId', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const sessionId = req.params.sessionId;
+  try {
+    await db.query(`DELETE FROM attendances WHERE class_session_id = $1`, [sessionId]);
+    await db.query(`DELETE FROM class_sessions WHERE id = $1`, [sessionId]);
+    res.redirect('/admin/dashboard');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao deletar sessão');
   }
 });
 
