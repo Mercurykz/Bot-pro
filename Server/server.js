@@ -90,10 +90,10 @@ app.get('/dashboard', async (req, res) => {
     // 📊 gráfico
     const result = await db.query(`
   SELECT 
-    DATE(data) as dia,
+    DATE(login_at) as dia,
     COUNT(*) as total
-  FROM presencas
-  GROUP BY DATE(data)
+  FROM attendances
+  GROUP BY DATE(login_at)
   ORDER BY dia ASC
 `);
 
@@ -103,7 +103,7 @@ app.get('/dashboard', async (req, res) => {
 
     // 📈 total geral
     const totalResult = await db.query(`
-      SELECT COUNT(*) as total FROM presencas
+      SELECT COUNT(*) as total FROM attendances
     `);
 
     const totalGeral = totalResult.rows[0] || { total: 0 };
