@@ -1,5 +1,16 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  Client,
+  GatewayIntentBits,
+  Events,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  REST,
+  Routes,
+  SlashCommandBuilder
+} = require('discord.js');
 const db = require('./database');
 
 console.log('🚀 Iniciando bot Discord...');
@@ -22,8 +33,49 @@ const client = new Client({
 // 🧠 cooldown em memória
 const cooldown = new Map();
 
+function getSlashCommands() {
+  return [
+    new SlashCommandBuilder()
+      .setName('presenca')
+      .setDescription('Registrar presença'),
+    new SlashCommandBuilder()
+      .setName('chamada')
+      .setDescription('Abrir o sistema atual de chamada')
+  ].map(cmd => cmd.toJSON());
+}
+
+async function syncSlashCommands(client) {
+  const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
+  const commands = getSlashCommands();
+  const appId = process.env.CLIENT_ID || client.user?.id;
+
+  if (!appId) {
+    console.warn('⚠️ CLIENT_ID não encontrado; não foi possível sincronizar slash commands.');
+    return;
+  }
+
+  try {
+    if (process.env.GUILD_ID) {
+      await rest.put(
+        Routes.applicationGuildCommands(appId, process.env.GUILD_ID),
+        { body: commands }
+      );
+      console.log(`✅ Slash commands sincronizados na guild ${process.env.GUILD_ID}.`);
+    } else {
+      await rest.put(
+        Routes.applicationCommands(appId),
+        { body: commands }
+      );
+      console.log('✅ Slash commands globais sincronizados (pode levar alguns minutos para aparecer).');
+    }
+  } catch (err) {
+    console.error('❌ Erro ao sincronizar slash commands:', err);
+  }
+}
+
 client.once(Events.ClientReady, () => {
   console.log(`🤖 Bot logado como ${client.user.tag}`);
+  syncSlashCommands(client);
 });
 
 client.on('error', (error) => {
