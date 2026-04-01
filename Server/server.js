@@ -2891,7 +2891,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 </div>
 
 <script>
-  function renderSessions(data, date) {
+  function renderSessions(data, date, usedFallback = false) {
     const target = document.getElementById('result');
 
     if (!data || !data.length) {
@@ -2899,7 +2899,11 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
       return;
     }
 
-    target.innerHTML = '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(session => {
+    const fallbackNotice = usedFallback
+      ? '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;color:var(--text-muted);font-size:12px;">⚠️ Nenhum resultado na data filtrada. Mostrando chamadas mais recentes.</div>'
+      : '';
+
+    target.innerHTML = fallbackNotice + '<h3 style="margin-bottom: 16px;">📚 Salas Encontradas</h3><ul>' + data.map(session => {
       const roomName = session.name || 'Sem nome';
       const dateLabel = session.start_time ? new Date(session.start_time).toLocaleString('pt-BR') : '-';
       const status = session.active
@@ -2936,7 +2940,17 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
       }
       const data = await resp.json();
       console.log('Dados carregados:', data);
-      renderSessions(data, date);
+
+      if (date && (!data || !data.length)) {
+        const fallbackResp = await fetch('/chamadas/api');
+        if (fallbackResp.ok) {
+          const fallbackData = await fallbackResp.json();
+          renderSessions(fallbackData, '', true);
+          return;
+        }
+      }
+
+      renderSessions(data, date, false);
     } catch (err) {
       console.error('Erro ao carregar:', err);
       alert('Erro ao carregar chamadas: ' + err.message);
@@ -2944,7 +2958,11 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   }
 
   document.getElementById('load').addEventListener('click', loadSessions);
-  window.addEventListener('DOMContentLoaded', loadSessions);
+  window.addEventListener('DOMContentLoaded', () => {
+    const dateInput = document.getElementById('date');
+    dateInput.value = '';
+    loadSessions();
+  });
 </script>
 
 </body>
