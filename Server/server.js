@@ -1191,6 +1191,7 @@ canvas {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout" class="logout">🚪 Sair</a></li>
   </ul>
@@ -1741,6 +1742,7 @@ app.get('/guild/:id', async (req, res) => {
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+      ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
     </ul>
@@ -1894,6 +1896,7 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+      ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
     </ul>
@@ -2403,6 +2406,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -2917,6 +2921,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     <li><a href="/subjects">📚 Matérias</a></li>
     <li><a href="/chamadas">📋 Chamadas</a></li>
+    ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -3731,6 +3736,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === "professor" || req.user.role === "admin" ? '<li><a href="/historico-chamadas">📚 Histórico</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
