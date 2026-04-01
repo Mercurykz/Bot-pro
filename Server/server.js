@@ -9,6 +9,42 @@ const XLSX = require('xlsx');
 const app = express();
 
 let attendanceSchemaCache = null;
+const rateLimitStore = new Map();
+
+function getRequestId() {
+  return crypto.randomUUID();
+}
+
+function logStructured(level, message, meta = {}) {
+  const payload = {
+    ts: new Date().toISOString(),
+    level,
+    message,
+    ...meta
+  };
+  const output = JSON.stringify(payload);
+  if (level === 'error') {
+    console.error(output);
+  } else {
+    console.log(output);
+  }
+}
+
+function checkRateLimit(key, limit, windowMs) {
+  const now = Date.now();
+  const rec = rateLimitStore.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > rec.resetAt) {
+    rec.count = 0;
+    rec.resetAt = now + windowMs;
+  }
+  rec.count += 1;
+  rateLimitStore.set(key, rec);
+  return {
+    allowed: rec.count <= limit,
+    remaining: Math.max(0, limit - rec.count),
+    resetAt: rec.resetAt
+  };
+}
 
 async function getAttendanceSchema() {
   if (!db) return { hasClassSessionId: false, hasClassId: false };
@@ -20,12 +56,24 @@ async function getAttendanceSchema() {
     WHERE table_schema = 'public'
       AND table_name = 'attendances'
   `);
+      list.innerHTML = data.map(item => {
+        const status = item.status || 'presente';
+        const badge = status === 'atrasado'
+          ? '<span class="status-badge" style="background:#7c2d12;color:#fdba74;border:1px solid #9a3412;">🟠 Atrasado</span>'
+          : status === 'justificada'
+            ? '<span class="status-badge" style="background:#1e3a8a;color:#93c5fd;border:1px solid #1d4ed8;">🔵 Justificada</span>'
+            : status === 'falta'
+              ? '<span class="status-badge" style="background:#7f1d1d;color:#fca5a5;border:1px solid #b91c1c;">🔴 Falta</span>'
+              : '<span class="status-badge" style="background:#14532d;color:#86efac;border:1px solid #15803d;">🟢 Presente</span>';
 
+        return `<li>
   const set = new Set(cols.rows.map(r => r.column_name));
   attendanceSchemaCache = {
     hasClassSessionId: set.has('class_session_id'),
     hasClassId: set.has('class_id')
-  };
+        ${badge}
+      </li>`;
+      }).join('');
 
   return attendanceSchemaCache;
 }
@@ -514,6 +562,48 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+  req.requestId = getRequestId();
+  res.setHeader('X-Request-Id', req.requestId);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on('finish', () => {
+    logStructured('info', 'http_request', {
+      requestId: req.requestId,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - started,
+      userId: req.user?.id || null,
+      role: req.user?.role || null
+    });
+  });
+  next();
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'server', time: new Date().toISOString() });
+});
+
+app.get('/ready', async (req, res) => {
+  if (!db) return res.status(500).json({ status: 'error', detail: 'DB não conectado' });
+  try {
+    await db.query('SELECT 1');
+    res.json({ status: 'ready', time: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', detail: err.message });
+  }
+});
+
 
 // Diagnóstico do banco (apenas admin)
 app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) => {
@@ -586,6 +676,68 @@ app.get('/admin/institucional-status', ensureAuthenticated, ensureAdmin, async (
       status: 'ok',
       modules: counts.rows[0],
       timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function requireApiToken(req, res, next) {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  const rawToken = (req.headers['x-api-token'] || '').toString().trim();
+  if (!rawToken) return res.status(401).json({ error: 'Token ausente' });
+
+  try {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenRes = await db.query(
+      `SELECT id, name, scopes
+       FROM api_tokens
+       WHERE token_hash = $1
+         AND active = true
+       LIMIT 1`,
+      [tokenHash]
+    );
+    if (!tokenRes.rowCount) return res.status(401).json({ error: 'Token inválido' });
+
+    await db.query(`UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1`, [tokenRes.rows[0].id]);
+    req.apiClient = tokenRes.rows[0];
+    next();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+app.get('/api/bi/attendance-summary', requireApiToken, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const from = req.query.from || null;
+    const to = req.query.to || null;
+    const summary = await db.query(
+      `SELECT
+         c.id AS class_id,
+         c.name AS class_name,
+         COUNT(a.id)::int AS total_checkins,
+         COUNT(DISTINCT a.student_id)::int AS unique_students,
+         COUNT(*) FILTER (WHERE a.status = 'atrasado')::int AS total_late,
+         ROUND(
+           (COUNT(*) FILTER (WHERE a.status = 'presente')::numeric / NULLIF(COUNT(a.id), 0)) * 100,
+           2
+         ) AS present_rate_percent
+       FROM classes c
+       LEFT JOIN attendances a ON a.class_id = c.id
+       WHERE ($1::date IS NULL OR DATE(a.login_at) >= $1::date)
+         AND ($2::date IS NULL OR DATE(a.login_at) <= $2::date)
+       GROUP BY c.id, c.name
+       ORDER BY c.name ASC`,
+      [from, to]
+    );
+
+    res.json({
+      status: 'ok',
+      from,
+      to,
+      rows: summary.rows,
+      generated_at: new Date().toISOString()
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2302,6 +2454,15 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
   const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '').toString().slice(0, 120);
   const ipAddress = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
 
+  const rl = checkRateLimit(`join:${classId}:${ipAddress}`, 12, 60 * 1000);
+  if (!rl.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: 'rate_limited',
+      message: 'Muitas tentativas. Aguarde alguns segundos e tente novamente.'
+    });
+  }
+
   if (!fullName) {
     return res.status(400).json({ success: false, error: 'Informe seu nome completo para registrar presença.' });
   }
@@ -2460,11 +2621,11 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     if (activeSession) {
       const membersQuery = schema.hasClassSessionId
         ? {
-            sql: `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+            sql: `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
             params: [activeSession.id]
           }
         : {
-            sql: `SELECT a.id, NULL::INTEGER AS class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+            sql: `SELECT a.id, NULL::INTEGER AS class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
             params: [classId]
           };
 
@@ -2488,12 +2649,24 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
       ? '<span class="status-badge active">🔴 Em Chamada</span>' 
       : '<span class="status-badge inactive">⚫ Inativa</span>';
 
-    const attendanceList = members.map(m => `<li>
+    const attendanceList = members.map(m => {
+      const status = m.status || 'presente';
+      const badge = status === 'atrasado'
+        ? '<span class="status-badge" style="background:#7c2d12;color:#fdba74;border:1px solid #9a3412;">🟠 Atrasado</span>'
+        : status === 'justificada'
+          ? '<span class="status-badge" style="background:#1e3a8a;color:#93c5fd;border:1px solid #1d4ed8;">🔵 Justificada</span>'
+          : status === 'falta'
+            ? '<span class="status-badge" style="background:#7f1d1d;color:#fca5a5;border:1px solid #b91c1c;">🔴 Falta</span>'
+            : '<span class="status-badge" style="background:#14532d;color:#86efac;border:1px solid #15803d;">🟢 Presente</span>';
+
+      return `<li>
       <div>
         <strong>${m.student_name || m.username}</strong>
         <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">⏰ ${new Date(m.login_at).toLocaleString('pt-BR')}</div>
       </div>
-    </li>`).join('');
+      ${badge}
+    </li>`;
+    }).join('');
 
     const timelineList = timeline.rows.map(t => `<li>
       <div>
@@ -3022,11 +3195,11 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
     const sessionId = sessionRes.rows[0].id;
     const attendeesQuery = schema.hasClassSessionId
       ? {
-          sql: `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+          sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
           params: [sessionId]
         }
       : {
-          sql: `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+          sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
           params: [classId]
         };
 
