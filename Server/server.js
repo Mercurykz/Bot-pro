@@ -56,24 +56,11 @@ async function getAttendanceSchema() {
     WHERE table_schema = 'public'
       AND table_name = 'attendances'
   `);
-      list.innerHTML = data.map(item => {
-        const status = item.status || 'presente';
-        const badge = status === 'atrasado'
-          ? '<span class="status-badge" style="background:#7c2d12;color:#fdba74;border:1px solid #9a3412;">🟠 Atrasado</span>'
-          : status === 'justificada'
-            ? '<span class="status-badge" style="background:#1e3a8a;color:#93c5fd;border:1px solid #1d4ed8;">🔵 Justificada</span>'
-            : status === 'falta'
-              ? '<span class="status-badge" style="background:#7f1d1d;color:#fca5a5;border:1px solid #b91c1c;">🔴 Falta</span>'
-              : '<span class="status-badge" style="background:#14532d;color:#86efac;border:1px solid #15803d;">🟢 Presente</span>';
-
-        return `<li>
   const set = new Set(cols.rows.map(r => r.column_name));
   attendanceSchemaCache = {
     hasClassSessionId: set.has('class_session_id'),
     hasClassId: set.has('class_id')
-        ${badge}
-      </li>`;
-      }).join('');
+  };
 
   return attendanceSchemaCache;
 }
