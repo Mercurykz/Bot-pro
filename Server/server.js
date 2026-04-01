@@ -7,6 +7,28 @@ const db = require('./database');
 const XLSX = require('xlsx');
 const app = express();
 
+let attendanceSchemaCache = null;
+
+async function getAttendanceSchema() {
+  if (!db) return { hasClassSessionId: false, hasClassId: false };
+  if (attendanceSchemaCache) return attendanceSchemaCache;
+
+  const cols = await db.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'attendances'
+  `);
+
+  const set = new Set(cols.rows.map(r => r.column_name));
+  attendanceSchemaCache = {
+    hasClassSessionId: set.has('class_session_id'),
+    hasClassId: set.has('class_id')
+  };
+
+  return attendanceSchemaCache;
+}
+
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: true }));
 
@@ -108,7 +130,9 @@ app.use(express.urlencoded({ extended: true }));
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
     console.log('  ✓ attendances_class_session_name_idx OK');
     
-    console.log('✅ DB initialized com sucesso!');
+    attendanceSchemaCache = null;
+    const schema = await getAttendanceSchema();
+    console.log(`✅ DB initialized com sucesso! attendances.class_session_id=${schema.hasClassSessionId} attendances.class_id=${schema.hasClassId}`);
   } catch (err) {
     console.error('❌ Erro ao inicializar DB:', err.message);
     console.error(err);
@@ -1839,12 +1863,27 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
   }
 
   try {
+    const schema = await getAttendanceSchema();
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
 
-    const existing = await db.query(`SELECT student_name FROM attendances WHERE class_session_id = $1 AND student_id = $2`, [sessionId, req.user.id]);
+    let existing;
+    if (schema.hasClassSessionId) {
+      existing = await db.query(
+        `SELECT student_name FROM attendances WHERE class_session_id = $1 AND student_id = $2`,
+        [sessionId, req.user.id]
+      );
+    } else if (schema.hasClassId) {
+      existing = await db.query(
+        `SELECT student_name FROM attendances WHERE class_id = $1 AND student_id = $2`,
+        [classId, req.user.id]
+      );
+    } else {
+      return res.status(500).json({ success: false, error: 'Tabela attendances sem colunas de vínculo de sessão/sala.' });
+    }
+
     if (existing.rowCount) {
       const currentName = existing.rows[0].student_name || '';
       if (currentName.trim() !== fullName) {
@@ -1857,8 +1896,22 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
       return res.json({ success: true, message: 'Presença já registrada' });
     }
 
-    await db.query(`INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-      [sessionId, req.user.id, fullName]);
+    if (schema.hasClassSessionId && schema.hasClassId) {
+      await db.query(
+        `INSERT INTO attendances (class_session_id, class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, $4, NOW())`,
+        [sessionId, classId, req.user.id, fullName]
+      );
+    } else if (schema.hasClassSessionId) {
+      await db.query(
+        `INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
+        [sessionId, req.user.id, fullName]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO attendances (class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
+        [classId, req.user.id, fullName]
+      );
+    }
 
     res.json({ success: true, message: 'Presença registrada com sucesso' });
   } catch (err) {
@@ -1879,6 +1932,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
+    const schema = await getAttendanceSchema();
     const classRes = await db.query(`
       SELECT c.*, u.username AS professor_name, s.name AS subject_name
       FROM classes c
@@ -1895,18 +1949,26 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
     let members = [];
     if (activeSession) {
-      const attendances = await db.query(
-        `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-        [activeSession.id]
-      );
+      const membersQuery = schema.hasClassSessionId
+        ? {
+            sql: `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+            params: [activeSession.id]
+          }
+        : {
+            sql: `SELECT a.id, NULL::INTEGER AS class_session_id, a.student_id, a.student_name, a.login_at, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+            params: [classId]
+          };
+
+      const attendances = await db.query(membersQuery.sql, membersQuery.params);
       members = attendances.rows;
     }
 
     // timeline de sessões do professor
+    const timelineJoin = schema.hasClassSessionId ? 'a.class_session_id = s.id' : 'a.class_id = s.class_id';
     const timeline = await db.query(
       `SELECT s.id, s.start_time, s.end_time, s.active, COUNT(a.id) AS total_presencas
        FROM class_sessions s
-       LEFT JOIN attendances a ON a.class_session_id = s.id
+       LEFT JOIN attendances a ON ${timelineJoin}
        WHERE s.class_id = $1
        GROUP BY s.id, s.start_time, s.end_time, s.active
        ORDER BY s.start_time DESC`,
@@ -2444,14 +2506,22 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
+    const schema = await getAttendanceSchema();
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.json([]);
 
     const sessionId = sessionRes.rows[0].id;
-    const attendances = await db.query(
-      `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-      [sessionId]
-    );
+    const attendeesQuery = schema.hasClassSessionId
+      ? {
+          sql: `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+          params: [sessionId]
+        }
+      : {
+          sql: `SELECT u.username, a.student_name, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+          params: [classId]
+        };
+
+    const attendances = await db.query(attendeesQuery.sql, attendeesQuery.params);
     console.log('[DEBUG] /class/:id/attendees - sessionId:', sessionId, 'rowCount:', attendances.rowCount);
     res.json(attendances.rows);
   } catch (err) {
@@ -2856,15 +2926,23 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
   const sessionId = req.params.sessionId;
   const date = req.query.date;
   try {
+    const schema = await getAttendanceSchema();
     const sessionResult = await db.query(`SELECT s.id, s.class_id, c.name FROM class_sessions s JOIN classes c ON c.id = s.class_id WHERE s.id = $1`, [sessionId]);
     if (!sessionResult.rowCount) return res.status(404).send('Sessão não encontrada');
 
     const sessionData = sessionResult.rows[0];
 
-    const attendances = await db.query(
-      `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-      [sessionId]
-    );
+    const exportQuery = schema.hasClassSessionId
+      ? {
+          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+          params: [sessionId]
+        }
+      : {
+          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+          params: [sessionData.class_id]
+        };
+
+    const attendances = await db.query(exportQuery.sql, exportQuery.params);
 
     const rows = attendances.rows;
 
@@ -3580,16 +3658,26 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
   if (!fullName) return res.status(400).json({ success: false, error: 'Informe o nome completo do aluno para marcar presença.' });
 
   try {
+    const schema = await getAttendanceSchema();
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
 
-    const existing = await db.query(`SELECT id FROM attendances WHERE class_session_id = $1 AND student_name = $2 LIMIT 1`, [sessionId, fullName]);
+    const existing = schema.hasClassSessionId
+      ? await db.query(`SELECT id FROM attendances WHERE class_session_id = $1 AND student_name = $2 LIMIT 1`, [sessionId, fullName])
+      : await db.query(`SELECT id FROM attendances WHERE class_id = $1 AND student_name = $2 LIMIT 1`, [classId, fullName]);
+
     if (existing.rowCount) {
       await db.query(`UPDATE attendances SET login_at = NOW() WHERE id = $1`, [existing.rows[0].id]);
     } else {
-      await db.query(`INSERT INTO attendances (class_session_id, student_name, login_at) VALUES ($1, $2, NOW())`, [sessionId, fullName]);
+      if (schema.hasClassSessionId && schema.hasClassId) {
+        await db.query(`INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`, [sessionId, classId, fullName]);
+      } else if (schema.hasClassSessionId) {
+        await db.query(`INSERT INTO attendances (class_session_id, student_name, login_at) VALUES ($1, $2, NOW())`, [sessionId, fullName]);
+      } else {
+        await db.query(`INSERT INTO attendances (class_id, student_name, login_at) VALUES ($1, $2, NOW())`, [classId, fullName]);
+      }
     }
 
     res.json({ success: true, message: 'Presença marcada com sucesso' });
