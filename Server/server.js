@@ -3,6 +3,7 @@ const express = require('express');
 const session = require('express-session');
 const passport = require('./auth');
 const db = require('./database');
+const crypto = require('crypto');
 
 const XLSX = require('xlsx');
 const app = express();
@@ -31,6 +32,7 @@ async function getAttendanceSchema() {
 
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 // Cria tabelas básicas se não existirem
 (async function initDb() {
@@ -50,16 +52,74 @@ app.use(express.urlencoded({ extended: true }));
         role TEXT NOT NULL DEFAULT 'aluno'
       );
 
+      CREATE TABLE IF NOT EXISTS user_roles (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        granted_by TEXT REFERENCES users(id),
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, role)
+      );
+
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        id SERIAL PRIMARY KEY,
+        role TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        action TEXT NOT NULL,
+        UNIQUE (role, resource, action)
+      );
+
+      CREATE TABLE IF NOT EXISTS user_2fa (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        secret_encrypted TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT false,
+        last_verified_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS subjects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS courses (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        code TEXT UNIQUE,
+        active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS academic_terms (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS classes (
         id SERIAL PRIMARY KEY,
         professor_id TEXT REFERENCES users(id),
         subject_id INTEGER REFERENCES subjects(id),
+        course_id INTEGER REFERENCES courses(id),
+        term_id INTEGER REFERENCES academic_terms(id),
+        class_code TEXT,
         name TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS enrollments (
+        id SERIAL PRIMARY KEY,
+        student_id TEXT NOT NULL REFERENCES users(id),
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        subject_id INTEGER REFERENCES subjects(id),
+        term_id INTEGER REFERENCES academic_terms(id),
+        status TEXT NOT NULL DEFAULT 'ativa',
+        enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (student_id, class_id)
       );
 
       CREATE TABLE IF NOT EXISTS class_sessions (
@@ -106,6 +166,136 @@ app.use(express.urlencoded({ extended: true }));
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS attendance_policies (
+        id SERIAL PRIMARY KEY,
+        term_id INTEGER REFERENCES academic_terms(id),
+        course_id INTEGER REFERENCES courses(id),
+        min_frequency_percent NUMERIC(5,2) NOT NULL DEFAULT 75.00,
+        late_tolerance_minutes INTEGER NOT NULL DEFAULT 10,
+        checkin_window_minutes INTEGER NOT NULL DEFAULT 20,
+        geofence_enabled BOOLEAN NOT NULL DEFAULT false,
+        ip_lock_enabled BOOLEAN NOT NULL DEFAULT false,
+        device_lock_enabled BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS academic_calendar (
+        id SERIAL PRIMARY KEY,
+        term_id INTEGER REFERENCES academic_terms(id) ON DELETE CASCADE,
+        class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        event_date DATE NOT NULL,
+        event_type TEXT NOT NULL,
+        description TEXT,
+        is_lective BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS attendance_justifications (
+        id SERIAL PRIMARY KEY,
+        attendance_id INTEGER REFERENCES attendances(id) ON DELETE CASCADE,
+        student_id TEXT NOT NULL REFERENCES users(id),
+        reason TEXT NOT NULL,
+        attachment_url TEXT,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        reviewed_by TEXT REFERENCES users(id),
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id BIGSERIAL PRIMARY KEY,
+        actor_user_id TEXT REFERENCES users(id),
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        old_data JSONB,
+        new_data JSONB,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS consent_logs (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        consent_type TEXT NOT NULL,
+        consent_version TEXT NOT NULL,
+        granted BOOLEAN NOT NULL,
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS attendance_qr_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_by TEXT REFERENCES users(id),
+        used_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS security_events (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT REFERENCES users(id),
+        event_type TEXT NOT NULL,
+        ip_address TEXT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS notification_queue (
+        id BIGSERIAL PRIMARY KEY,
+        channel TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        subject TEXT,
+        message TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sent_at TIMESTAMPTZ,
+        error TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS api_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        scopes TEXT[] NOT NULL DEFAULT '{}',
+        created_by TEXT REFERENCES users(id),
+        active BOOLEAN NOT NULL DEFAULT true,
+        last_used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS integration_connectors (
+        id SERIAL PRIMARY KEY,
+        provider TEXT NOT NULL,
+        base_url TEXT,
+        api_key_encrypted TEXT,
+        active BOOLEAN NOT NULL DEFAULT false,
+        last_sync_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS import_jobs (
+        id BIGSERIAL PRIMARY KEY,
+        import_type TEXT NOT NULL,
+        file_name TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ,
+        summary JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS backup_registry (
+        id BIGSERIAL PRIMARY KEY,
+        backup_type TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        size_bytes BIGINT,
+        verified BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
 
     // Garante colunas do novo modelo de sessão
@@ -113,6 +303,15 @@ app.use(express.urlencoded({ extended: true }));
     
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS subject_id INTEGER REFERENCES subjects(id)`);
     console.log('  ✓ classes.subject_id OK');
+
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS course_id INTEGER REFERENCES courses(id)`);
+    console.log('  ✓ classes.course_id OK');
+
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS term_id INTEGER REFERENCES academic_terms(id)`);
+    console.log('  ✓ classes.term_id OK');
+
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS class_code TEXT`);
+    console.log('  ✓ classes.class_code OK');
     
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
     console.log('  ✓ classes.active OK');
@@ -150,6 +349,24 @@ app.use(express.urlencoded({ extended: true }));
     } else {
       console.log('  ✓ attendances.student_name já existe');
     }
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'presente'`);
+    console.log('  ✓ attendances.status OK');
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS late_minutes INTEGER NOT NULL DEFAULT 0`);
+    console.log('  ✓ attendances.late_minutes OK');
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS ip_address TEXT`);
+    console.log('  ✓ attendances.ip_address OK');
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS device_id TEXT`);
+    console.log('  ✓ attendances.device_id OK');
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7)`);
+    console.log('  ✓ attendances.latitude OK');
+
+    await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7)`);
+    console.log('  ✓ attendances.longitude OK');
     
     // Criar índices para attendances
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
@@ -177,6 +394,34 @@ app.use(express.urlencoded({ extended: true }));
     
     await db.query(`CREATE INDEX IF NOT EXISTS call_history_session_date_idx ON call_history(session_date)`);
     console.log('  ✓ call_history_session_date_idx OK');
+
+    await db.query(`CREATE INDEX IF NOT EXISTS enrollments_student_idx ON enrollments(student_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS enrollments_class_idx ON enrollments(class_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS calendar_term_date_idx ON academic_calendar(term_id, event_date)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS justifications_student_idx ON attendance_justifications(student_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS audit_logs_actor_idx ON audit_logs(actor_user_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS qr_tokens_session_idx ON attendance_qr_tokens(session_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS security_events_user_idx ON security_events(user_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS notification_queue_status_idx ON notification_queue(status)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS import_jobs_status_idx ON import_jobs(status)`);
+    console.log('  ✓ índices institucionais OK');
+
+    await db.query(`
+      INSERT INTO role_permissions (role, resource, action)
+      VALUES
+        ('admin', '*', '*'),
+        ('coordenacao', 'dashboard', 'read'),
+        ('coordenacao', 'classes', 'read'),
+        ('coordenacao', 'attendances', 'read'),
+        ('coordenacao', 'reports', 'read'),
+        ('professor', 'classes', 'manage'),
+        ('professor', 'attendances', 'manage'),
+        ('monitor', 'attendances', 'assist'),
+        ('aluno', 'attendances', 'self_checkin')
+      ON CONFLICT (role, resource, action) DO NOTHING
+    `);
+    console.log('  ✓ role_permissions padrão OK');
 
     // Migração de compatibilidade: vincula presenças antigas (class_id) em sessões (class_session_id)
     const legacyClassIdExists = await db.query(`
@@ -313,6 +558,37 @@ app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) =>
       code: err.code,
       details: err.detail
     });
+  }
+});
+
+app.get('/admin/institucional-status', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const counts = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM academic_terms) AS terms,
+        (SELECT COUNT(*) FROM courses) AS courses,
+        (SELECT COUNT(*) FROM enrollments) AS enrollments,
+        (SELECT COUNT(*) FROM attendance_policies) AS attendance_policies,
+        (SELECT COUNT(*) FROM academic_calendar) AS calendar_events,
+        (SELECT COUNT(*) FROM attendance_justifications) AS justifications,
+        (SELECT COUNT(*) FROM audit_logs) AS audit_logs,
+        (SELECT COUNT(*) FROM consent_logs) AS consent_logs,
+        (SELECT COUNT(*) FROM attendance_qr_tokens) AS qr_tokens,
+        (SELECT COUNT(*) FROM notification_queue) AS notifications,
+        (SELECT COUNT(*) FROM api_tokens) AS api_tokens,
+        (SELECT COUNT(*) FROM integration_connectors) AS integrations,
+        (SELECT COUNT(*) FROM import_jobs) AS import_jobs,
+        (SELECT COUNT(*) FROM backup_registry) AS backups
+    `);
+
+    res.json({
+      status: 'ok',
+      modules: counts.rows[0],
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1785,8 +2061,9 @@ function ensureAuthenticated(req, res, next) {
 }
 
 function ensureProfessor(req, res, next) {
-  if (!req.user || (req.user.role !== 'professor' && req.user.role !== 'admin')) {
-    return res.status(403).send('Acesso negado: apenas professores ou administradores.');
+  const allowed = new Set(['professor', 'admin', 'coordenacao', 'monitor']);
+  if (!req.user || !allowed.has(req.user.role)) {
+    return res.status(403).send('Acesso negado: apenas equipe acadêmica.');
   }
   return next();
 }
@@ -1972,10 +2249,58 @@ app.post('/class/:id/start-session', ensureAuthenticated, ensureProfessor, async
   }
 });
 
+app.post('/class/:id/session/:sessionId/qr', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ success: false, error: 'DB não conectado' });
+  const classId = Number(req.params.id);
+  const sessionId = Number(req.params.sessionId);
+  const expiresInMinutes = Math.min(30, Math.max(1, Number(req.body?.expiresInMinutes || 5)));
+
+  try {
+    const canManageAnyClass = req.user.role === 'admin' || req.user.role === 'coordenacao';
+    const classResult = canManageAnyClass
+      ? await db.query(`SELECT id FROM classes WHERE id = $1`, [classId])
+      : await db.query(`SELECT id FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+
+    if (!classResult.rowCount) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para gerar QR desta sala.' });
+    }
+
+    const sessionResult = await db.query(
+      `SELECT id FROM class_sessions WHERE id = $1 AND class_id = $2 LIMIT 1`,
+      [sessionId, classId]
+    );
+    if (!sessionResult.rowCount) {
+      return res.status(404).json({ success: false, error: 'Sessão não encontrada.' });
+    }
+
+    const token = crypto.randomBytes(16).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    await db.query(
+      `INSERT INTO attendance_qr_tokens (session_id, token, expires_at, created_by)
+       VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval, $4)`,
+      [sessionId, tokenHash, String(expiresInMinutes), req.user.id]
+    );
+
+    res.json({
+      success: true,
+      qr_token: token,
+      expires_in_minutes: expiresInMinutes,
+      expires_at: new Date(Date.now() + expiresInMinutes * 60000).toISOString()
+    });
+  } catch (err) {
+    console.error('Erro ao gerar QR dinâmico:', err);
+    res.status(500).json({ success: false, error: 'Erro ao gerar QR dinâmico' });
+  }
+});
+
 app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded({ extended: true }), async (req, res) => {
   if (!db) return res.json({ success: false, error: 'DB não conectado' });
   const classId = req.params.id;
   const fullName = req.body.fullName?.trim();
+  const qrToken = (req.body.qrToken || req.body.qr_token || '').trim();
+  const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '').toString().slice(0, 120);
+  const ipAddress = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
 
   if (!fullName) {
     return res.status(400).json({ success: false, error: 'Informe seu nome completo para registrar presença.' });
@@ -1983,10 +2308,69 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
 
   try {
     const schema = await getAttendanceSchema();
-    const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
+    const sessionRes = await db.query(`SELECT id, start_time FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
+    const sessionStartTime = sessionRes.rows[0].start_time;
+
+    const classMeta = await db.query(
+      `SELECT term_id, course_id FROM classes WHERE id = $1 LIMIT 1`,
+      [classId]
+    );
+
+    let policy = null;
+    if (classMeta.rowCount) {
+      const termId = classMeta.rows[0].term_id;
+      const courseId = classMeta.rows[0].course_id;
+      const policyRes = await db.query(
+        `SELECT *
+         FROM attendance_policies
+         WHERE ($1::int IS NULL OR term_id = $1)
+           AND ($2::int IS NULL OR course_id = $2)
+         ORDER BY id DESC
+         LIMIT 1`,
+        [termId, courseId]
+      );
+      policy = policyRes.rows[0] || null;
+    }
+
+    const nowMs = Date.now();
+    const startMs = new Date(sessionStartTime).getTime();
+    const lateMinutes = Math.max(0, Math.floor((nowMs - startMs) / 60000));
+    const lateTolerance = Number(policy?.late_tolerance_minutes ?? 10);
+    const checkinWindow = Number(policy?.checkin_window_minutes ?? 20);
+
+    if (checkinWindow > 0 && lateMinutes > checkinWindow) {
+      return res.status(400).json({
+        success: false,
+        error: 'checkin_window_expired',
+        message: `Janela de check-in encerrada (${checkinWindow} min).`
+      });
+    }
+
+    const activeQrRes = await db.query(
+      `SELECT id, token, expires_at
+       FROM attendance_qr_tokens
+       WHERE session_id = $1
+         AND expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [sessionId]
+    );
+    let activeQrId = null;
+    if (activeQrRes.rowCount) {
+      activeQrId = activeQrRes.rows[0].id;
+      const expectedTokenHash = activeQrRes.rows[0].token;
+      const providedHash = qrToken ? crypto.createHash('sha256').update(qrToken).digest('hex') : '';
+      if (!providedHash || providedHash !== expectedTokenHash) {
+        return res.status(400).json({
+          success: false,
+          error: 'invalid_qr',
+          message: 'QR da chamada inválido ou expirado.'
+        });
+      }
+    }
 
     let existing;
     if (schema.hasClassSessionId) {
@@ -2015,24 +2399,30 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
       return res.json({ success: true, message: 'Presença já registrada' });
     }
 
+    if (activeQrId) {
+      await db.query(`UPDATE attendance_qr_tokens SET used_count = used_count + 1 WHERE id = $1`, [activeQrId]);
+    }
+
+    const attendanceStatus = lateMinutes > lateTolerance ? 'atrasado' : 'presente';
+
     if (schema.hasClassSessionId && schema.hasClassId) {
       await db.query(
-        `INSERT INTO attendances (class_session_id, class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, $4, NOW())`,
-        [sessionId, classId, req.user.id, fullName]
+        `INSERT INTO attendances (class_session_id, class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8)`,
+        [sessionId, classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
       );
     } else if (schema.hasClassSessionId) {
       await db.query(
-        `INSERT INTO attendances (class_session_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-        [sessionId, req.user.id, fullName]
+        `INSERT INTO attendances (class_session_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)`,
+        [sessionId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
       );
     } else {
       await db.query(
-        `INSERT INTO attendances (class_id, student_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-        [classId, req.user.id, fullName]
+        `INSERT INTO attendances (class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)`,
+        [classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
       );
     }
 
-    res.json({ success: true, message: 'Presença registrada com sucesso' });
+    res.json({ success: true, message: 'Presença registrada com sucesso', status: attendanceStatus, late_minutes: lateMinutes });
   } catch (err) {
     console.error(err);
     // Erro de chave duplicada (outro aluno com o mesmo nome)
