@@ -129,6 +129,75 @@ app.use(express.urlencoded({ extended: true }));
     
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
     console.log('  ✓ attendances_class_session_name_idx OK');
+
+    // Migração de compatibilidade: vincula presenças antigas (class_id) em sessões (class_session_id)
+    const legacyClassIdExists = await db.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'attendances'
+        AND column_name = 'class_id'
+      LIMIT 1
+    `);
+
+    const legacyNullSession = await db.query(`
+      SELECT COUNT(*)::int AS total
+      FROM attendances
+      WHERE class_session_id IS NULL
+    `);
+    const legacyCount = Number(legacyNullSession.rows[0]?.total || 0);
+
+    if (legacyCount > 0 && legacyClassIdExists.rowCount) {
+      console.log(`  ⚠ Encontradas ${legacyCount} presenças antigas sem class_session_id. Iniciando backfill...`);
+
+      await db.query('BEGIN');
+      try {
+        // 1) Tenta reutilizar sessões já existentes no mesmo dia/classe
+        const linkedExisting = await db.query(`
+          UPDATE attendances a
+          SET class_session_id = s.id
+          FROM class_sessions s
+          WHERE a.class_session_id IS NULL
+            AND a.class_id IS NOT NULL
+            AND s.class_id = a.class_id
+            AND DATE(s.start_time) = DATE(a.login_at)
+        `);
+
+        // 2) Cria sessões faltantes por classe+dia para o que ainda estiver sem vínculo
+        await db.query(`
+          INSERT INTO class_sessions (class_id, start_time, end_time, active)
+          SELECT m.class_id, m.day_start, m.day_start + INTERVAL '1 hour', false
+          FROM (
+            SELECT DISTINCT a.class_id, DATE(a.login_at)::timestamptz AS day_start
+            FROM attendances a
+            WHERE a.class_session_id IS NULL
+              AND a.class_id IS NOT NULL
+          ) m
+          LEFT JOIN class_sessions s
+            ON s.class_id = m.class_id
+           AND DATE(s.start_time) = DATE(m.day_start)
+          WHERE s.id IS NULL
+        `);
+
+        // 3) Vincula novamente após criação das sessões faltantes
+        const linkedAfterInsert = await db.query(`
+          UPDATE attendances a
+          SET class_session_id = s.id
+          FROM class_sessions s
+          WHERE a.class_session_id IS NULL
+            AND a.class_id IS NOT NULL
+            AND s.class_id = a.class_id
+            AND DATE(s.start_time) = DATE(a.login_at)
+        `);
+
+        await db.query('COMMIT');
+        console.log(`  ✓ Backfill concluído. Presenças vinculadas: ${linkedExisting.rowCount + linkedAfterInsert.rowCount}`);
+      } catch (backfillErr) {
+        await db.query('ROLLBACK');
+        console.error('  ❌ Falha no backfill de presenças antigas:', backfillErr.message);
+      }
+    } else if (legacyCount > 0) {
+      console.log('  ⚠ Há presenças sem class_session_id, mas attendances.class_id não existe. Backfill ignorado.');
+    }
     
     attendanceSchemaCache = null;
     const schema = await getAttendanceSchema();
