@@ -1073,7 +1073,7 @@ canvas {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
-    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout" class="logout">🚪 Sair</a></li>
   </ul>
@@ -1841,7 +1841,9 @@ app.post('/class/:id/start-session', ensureAuthenticated, ensureProfessor, async
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
-    const classData = await db.query(`SELECT * FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+    const classData = req.user.role === 'admin'
+      ? await db.query(`SELECT * FROM classes WHERE id = $1`, [classId])
+      : await db.query(`SELECT * FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
     if (!classData.rowCount) return res.status(404).send('Sala não encontrada');
 
     await db.query(`UPDATE class_sessions SET active = false, end_time = NOW() WHERE class_id = $1 AND active = true`, [classId]);
@@ -2283,7 +2285,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
-    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -2299,7 +2301,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     </div>
   </div>
 
-  ${req.user.role === 'professor' && (!activeSession || !activeSession.active) ? `<div class="card">
+  ${(req.user.role === 'professor' || req.user.role === 'admin') && (!activeSession || !activeSession.active) ? `<div class="card">
     <form method="POST" action="/class/${classId}/start-session">
       <button type="submit">▶️ Iniciar Chamada</button>
     </form>
@@ -2321,7 +2323,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     </form>
   </div>` : ''}
 
-  ${req.user.role === 'professor' && activeSession && activeSession.active ? `<div class="card">
+  ${(req.user.role === 'professor' || req.user.role === 'admin') && activeSession && activeSession.active ? `<div class="card">
     <h2>📝 Marcar Presença por Nome</h2>
     <form id="mark-attendance-form">
       <label>
@@ -2884,16 +2886,24 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   try {
-    const sessions = await db.query(
-      `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-       FROM class_sessions s
-       JOIN classes c ON c.id = s.class_id
-       WHERE c.professor_id = $1
-       ORDER BY s.start_time DESC
-       LIMIT 120`,
-      [req.user.id]
-    );
-    console.log(`[DEBUG] /chamadas/api - Professor ${req.user.id} carregou ${sessions.rows.length} sessões`);
+    const sessions = req.user.role === 'admin'
+      ? await db.query(
+          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           ORDER BY s.start_time DESC
+           LIMIT 120`
+        )
+      : await db.query(
+          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           WHERE c.professor_id = $1
+           ORDER BY s.start_time DESC
+           LIMIT 120`,
+          [req.user.id]
+        );
+    console.log(`[DEBUG] /chamadas/api - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões`);
     res.json(sessions.rows);
   } catch (err) {
     console.error('[ERROR] /chamadas/api:', err.message);
@@ -2905,15 +2915,24 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const date = req.params.date; // YYYY-MM-DD
   try {
-    const sessions = await db.query(
-      `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-       FROM class_sessions s
-       JOIN classes c ON c.id = s.class_id
-       WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
-       ORDER BY s.start_time DESC`,
-      [req.user.id, date]
-    );
-    console.log(`[DEBUG] /chamadas/api/${date} - Professor ${req.user.id} carregou ${sessions.rows.length} sessões para ${date}`);
+    const sessions = req.user.role === 'admin'
+      ? await db.query(
+          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           WHERE DATE(s.start_time) = $1
+           ORDER BY s.start_time DESC`,
+          [date]
+        )
+      : await db.query(
+          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
+           ORDER BY s.start_time DESC`,
+          [req.user.id, date]
+        );
+    console.log(`[DEBUG] /chamadas/api/${date} - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões para ${date}`);
     res.json(sessions.rows);
   } catch (err) {
     console.error('[ERROR] /chamadas/api/:date:', err.message);
@@ -2979,13 +2998,21 @@ app.post('/chamadas/:sessionId/reopen', ensureAuthenticated, ensureProfessor, as
   if (!sessionId) return res.status(400).send('Sessão inválida.');
 
   try {
-    const targetSession = await db.query(
-      `SELECT s.id, s.class_id
-       FROM class_sessions s
-       JOIN classes c ON c.id = s.class_id
-       WHERE s.id = $1 AND c.professor_id = $2`,
-      [sessionId, req.user.id]
-    );
+    const targetSession = req.user.role === 'admin'
+      ? await db.query(
+          `SELECT s.id, s.class_id
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           WHERE s.id = $1`,
+          [sessionId]
+        )
+      : await db.query(
+          `SELECT s.id, s.class_id
+           FROM class_sessions s
+           JOIN classes c ON c.id = s.class_id
+           WHERE s.id = $1 AND c.professor_id = $2`,
+          [sessionId, req.user.id]
+        );
 
     if (!targetSession.rowCount) return res.status(404).send('Sessão não encontrada.');
 
@@ -3055,7 +3082,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
           </div>
           <div style="display: flex; gap: 8px;">
             <a href="/class/${r.id}">Abrir</a>
-            ${req.user.role === 'professor' ? (isActive ? `<form method="POST" action="/class/${r.id}/end" style="display:inline; margin: 0;"><button type="submit" class="btn-danger">Encerrar</button></form>` : `<form method="POST" action="/class/${r.id}/start-session" style="display:inline; margin: 0;"><button type="submit">Iniciar</button></form>`) : ''}
+            ${(req.user.role === 'professor' || req.user.role === 'admin') ? (isActive ? `<form method="POST" action="/class/${r.id}/end" style="display:inline; margin: 0;"><button type="submit" class="btn-danger">Encerrar</button></form>` : `<form method="POST" action="/class/${r.id}/start-session" style="display:inline; margin: 0;"><button type="submit">Iniciar</button></form>`) : ''}
             ${req.user.role === 'admin' ? `<form method="POST" action="/admin/class/${r.id}/delete" style="display:inline; margin: 0;" onsubmit="return confirm('Tem certeza que deseja excluir esta sala e todo o histórico de chamadas?');"><button type="submit" class="btn-danger">🗑️ Excluir</button></form>` : ''}
           </div>
         </li>`;
@@ -3366,7 +3393,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
-    ${req.user.role === 'professor' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -3993,6 +4020,10 @@ app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) =
   <ul class="nav-menu">
     <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
     <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/subjects">📚 Matérias</a></li>
+    <li><a href="/chamadas">📋 Chamadas</a></li>
+    <li><a href="/admin/db-check">🧪 Diagnóstico DB</a></li>
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
