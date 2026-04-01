@@ -199,7 +199,7 @@ app.use(express.urlencoded({ extended: true }));
 
       await db.query('BEGIN');
       try {
-        // 1) Tenta reutilizar sessões já existentes no mesmo dia/classe
+        // 1) Vincula presenças a sessões já existentes no mesmo dia/classe
         const linkedExisting = await db.query(`
           UPDATE attendances a
           SET class_session_id = s.id
@@ -2940,7 +2940,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
       </div>
       <button id="load">Carregar</button>
     </div>
-    <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 13px;">Carregue as chamadas já existentes para abrir ou reabrir.</p>
+    <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 13px;">Carregue as chamadas já existentes para visualizar e baixar.</p>
     <div id="result"></div>
   </div>
 
@@ -2967,9 +2967,6 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         ? '<span style="font-size:12px; color:#10b981;">🟢 Ativa</span>'
         : '<span style="font-size:12px; color:var(--text-muted);">⚪ Encerrada</span>';
       const exportDate = date || (session.start_time ? session.start_time.slice(0, 10) : 'sem-data');
-      const reopenBtn = !session.active && !session.is_legacy
-        ? '<form method="POST" action="/chamadas/' + session.session_id + '/reopen" style="display:inline;margin:0;" onsubmit="return confirm(\'Deseja reabrir esta chamada?\');"><button type="submit" style="padding:8px 12px; font-size:12px;">🔄 Reabrir</button></form>'
-        : '';
 
       return \`<li>
         <div>
@@ -2980,7 +2977,6 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <a href="/class/\${session.class_id}" style="padding: 8px 12px; background: var(--card-dark); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px;">📂 Abrir</a>
           <a href="/chamadas/\${session.session_id}/export?date=\${exportDate}&format=xlsx" style="padding: 8px 12px; background: linear-gradient(135deg, #10b981, #059669); border-radius: 6px; color: white; font-size: 12px; border: none;">📥 Baixar</a>
-          \${reopenBtn}
         </div>
       </li>\`;
     }).join('') + '</ul>';
@@ -3134,7 +3130,7 @@ app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) 
 
 app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  const date = req.params.date; // YYYY-MM-DD
+  const date = req.params.date;
   try {
     const schema = await getAttendanceSchema();
     let sessions;
@@ -3331,55 +3327,6 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao exportar chamada');
-  }
-});
-
-app.post('/chamadas/:sessionId/reopen', ensureAuthenticated, ensureProfessor, async (req, res) => {
-  if (!db) return res.status(500).send('Erro: DB não conectado.');
-  const sessionId = parseInt(req.params.sessionId, 10);
-  if (!sessionId) return res.status(400).send('Sessão inválida.');
-
-  try {
-    const targetSession = req.user.role === 'admin'
-      ? await db.query(
-          `SELECT s.id, s.class_id
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           WHERE s.id = $1`,
-          [sessionId]
-        )
-      : await db.query(
-          `SELECT s.id, s.class_id
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           WHERE s.id = $1 AND c.professor_id = $2`,
-          [sessionId, req.user.id]
-        );
-
-    if (!targetSession.rowCount) return res.status(404).send('Sessão não encontrada.');
-
-    const classId = targetSession.rows[0].class_id;
-
-    await db.query('BEGIN');
-    await db.query(
-      `UPDATE class_sessions
-       SET active = false, end_time = COALESCE(end_time, NOW())
-       WHERE class_id = $1 AND active = true AND id <> $2`,
-      [classId, sessionId]
-    );
-    await db.query(
-      `UPDATE class_sessions
-       SET active = true, end_time = NULL
-       WHERE id = $1`,
-      [sessionId]
-    );
-    await db.query('COMMIT');
-
-    res.redirect(`/class/${classId}`);
-  } catch (err) {
-    try { await db.query('ROLLBACK'); } catch (_) {}
-    console.error('Erro ao reabrir chamada:', err);
-    res.status(500).send('Erro ao reabrir chamada');
   }
 });
 
