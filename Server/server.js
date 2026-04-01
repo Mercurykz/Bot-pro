@@ -78,6 +78,34 @@ app.use(express.urlencoded({ extended: true }));
         login_at TIMESTAMPTZ NOT NULL,
         UNIQUE (class_session_id, student_id)
       );
+
+      CREATE TABLE IF NOT EXISTS attendance_records (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES class_sessions(id) ON DELETE CASCADE,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        professor_id TEXT NOT NULL REFERENCES users(id),
+        student_name TEXT NOT NULL,
+        student_id TEXT REFERENCES users(id),
+        attendance_date TIMESTAMPTZ NOT NULL,
+        attendance_time TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS call_history (
+        id SERIAL PRIMARY KEY,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        session_id INTEGER REFERENCES class_sessions(id),
+        professor_id TEXT NOT NULL REFERENCES users(id),
+        session_name TEXT NOT NULL,
+        session_date DATE NOT NULL,
+        session_start_time TIMESTAMPTZ NOT NULL,
+        session_end_time TIMESTAMPTZ,
+        total_students INT DEFAULT 0,
+        total_present INT DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
 
     // Garante colunas do novo modelo de sessão
@@ -123,12 +151,32 @@ app.use(express.urlencoded({ extended: true }));
       console.log('  ✓ attendances.student_name já existe');
     }
     
-    // Criar índices
+    // Criar índices para attendances
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
     console.log('  ✓ attendances_class_session_student_idx OK');
     
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
     console.log('  ✓ attendances_class_session_name_idx OK');
+
+    // Criar índices para attendance_records
+    await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_session_idx ON attendance_records(session_id)`);
+    console.log('  ✓ attendance_records_session_idx OK');
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_professor_idx ON attendance_records(professor_id)`);
+    console.log('  ✓ attendance_records_professor_idx OK');
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_date_idx ON attendance_records(attendance_date)`);
+    console.log('  ✓ attendance_records_date_idx OK');
+
+    // Criar índices para call_history
+    await db.query(`CREATE INDEX IF NOT EXISTS call_history_class_idx ON call_history(class_id)`);
+    console.log('  ✓ call_history_class_idx OK');
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS call_history_professor_idx ON call_history(professor_id)`);
+    console.log('  ✓ call_history_professor_idx OK');
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS call_history_session_date_idx ON call_history(session_date)`);
+    console.log('  ✓ call_history_session_date_idx OK');
 
     // Migração de compatibilidade: vincula presenças antigas (class_id) em sessões (class_session_id)
     const legacyClassIdExists = await db.query(`
@@ -2601,6 +2649,10 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   }
 });
 
+app.get('/historico-chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
+  res.send('<'+'!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Presença Plus | Histórico de Chamadas</title><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet"><style>* { margin: 0; padding: 0; box-sizing: border-box; } :root { --primary: #6366f1; --secondary: #8b5cf6; --bg-dark: #0f172a; --card-dark: #1e293b; --text-light: #f1f5f9; --text-muted: #94a3b8; --border-color: #334155; --success: #10b981; --danger: #ef4444; } html, body { font-family: "Poppins", sans-serif; background: var(--bg-dark); color: var(--text-light); min-height: 100vh; } body { display: flex; } .sidebar { width: 280px; background: linear-gradient(180deg, #020617 0%, #0f172a 100%); border-right: 1px solid var(--border-color); padding: 30px 20px; height: 100vh; position: fixed; overflow-y: auto; } .sidebar h2 { font-size: 24px; margin-bottom: 20px; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; } .nav-menu { list-style: none; } .nav-menu li { margin-bottom: 10px; } .nav-menu a { display: block; padding: 12px 16px; color: var(--text-muted); text-decoration: none; border-radius: 8px; transition: all 0.3s; border-left: 3px solid transparent; } .nav-menu a:hover { background: var(--card-dark); color: var(--text-light); border-left-color: var(--primary); } .content { margin-left: 280px; flex: 1; padding: 40px; overflow-y: auto; max-height: 100vh; } .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; } .topbar h1 { font-size: 32px; font-weight: 700; } .card { background: var(--card-dark); border: 1px solid var(--border-color); padding: 24px; border-radius: 14px; margin-bottom: 20px; } .filter-group { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; } label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; } input[type="date"], input[type="text"], select { padding: 12px 16px; background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-light); border-radius: 8px; font-family: "Poppins", sans-serif; font-size: 14px; } input[type="date"]:focus, input[type="text"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); } button { padding: 12px 24px; background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-family: "Poppins", sans-serif; transition: all 0.3s; text-transform: uppercase; letter-spacing: 0.5px; font-size: 14px; } button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3); } button.btn-danger { background: var(--danger); } button.btn-danger:hover { background: #dc2626; } table { width: 100%; border-collapse: collapse; margin-top: 20px; } thead { background: var(--bg-dark); border-bottom: 2px solid var(--border-color); } th { padding: 16px; text-align: left; font-weight: 600; color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; } td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); } tbody tr:hover { background: rgba(99, 102, 241, 0.05); } .action-cell { display: flex; gap: 8px; flex-wrap: wrap; } .action-cell a, .action-cell button { padding: 6px 12px; font-size: 12px; white-space: nowrap; } .result-empty { text-align: center; padding: 40px; color: var(--text-muted); } .loading { text-align: center; padding: 40px; color: var(--text-muted); } .back-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background: var(--card-dark); border: 1px solid var(--border-color); border-radius: 8px; text-decoration: none; color: var(--primary); transition: all 0.3s; } .back-link:hover { background: var(--border-color); } .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); } .modal-content { background: var(--card-dark); margin: 5% auto; padding: 24px; border-radius: 14px; border: 1px solid var(--border-color); width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; } .close { color: var(--text-muted); float: right; font-size: 28px; font-weight: bold; cursor: pointer; } .close:hover { color: var(--text-light); } @media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--border-color); } .content { margin-left: 0; padding: 20px; } .filter-group { flex-direction: column; align-items: stretch; } input[type="date"] { width: 100%; } table { font-size: 12px; } th, td { padding: 8px; } }</style></head><body><div class="sidebar"><h2>✨ Presença Plus</h2><ul class="nav-menu"><li><a href="/dashboard">📊 Dashboard</a></li><li><a href="/classes">🏫 Salas de Aula</a></li><li><a href="/subjects">📚 Matérias</a></li><li><a href="/chamadas">📋 Chamadas</a></li><li><a href="/historico-chamadas">📚 Histórico</a></li>' + (req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : '') + '<li><a href="/logout">🚪 Sair</a></li></ul></div><div class="content"><div class="topbar"><h1>📚 Histórico de Chamadas</h1></div><div class="card"><h3 style="margin-bottom: 20px;">Filtrar Chamadas</h3><div class="filter-group"><div><label for="filterDate">Data</label><input id="filterDate" type="date" /></div><button onclick="loadHistorico()">🔍 Filtrar</button><button onclick="clearFilters()" style="background: var(--border-color);">✕ Limpar</button></div></div><div class="card"><div id="historico-container"><div class="loading">Carregando histórico...</div></div></div><a href="/dashboard" class="back-link">← Voltar ao Dashboard</a></div><div id="detailsModal" class="modal"><div class="modal-content"><span class="close" onclick="closeModal()">&times;</span><h2 style="margin-bottom: 20px;">Detalhes da Chamada</h2><div id="modalBody"></div></div></div><script>let currentData = []; async function loadHistorico() { const container = document.getElementById("historico-container"); container.innerHTML = "<div class=\"loading\">Carregando histórico...</div>"; try { const resp = await fetch("/api/chamadas/historico"); if (!resp.ok) throw new Error("Falha ao carregar"); const data = await resp.json(); currentData = data; renderTable(data); } catch (err) { console.error("Erro:", err); container.innerHTML = "<div class=\"result-empty\"><p>❌ Erro ao carregar histórico</p></div>"; } } function renderTable(data) { const container = document.getElementById("historico-container"); if (!data || !data.length) { container.innerHTML = "<div class=\"result-empty\"><p>📭 Nenhuma chamada encontrada.</p></div>"; return; } let html = "<table><thead><tr><th>Sala</th><th>Data</th><th>Horário</th><th>Presentes</th><th>Ações</th></tr></thead><tbody>"; html += data.map(call => { const date = new Date(call.session_date).toLocaleDateString("pt-BR"); const time = new Date(call.session_start_time).toLocaleTimeString("pt-BR"); const count = call.total_present + "/" + call.total_students; return "<tr><td><strong>" + call.class_name + "</strong></td><td>" + date + "</td><td>" + time + "</td><td>" + count + "</td><td><div class=\"action-cell\"><button onclick=\"showDetails(" + call.id + ")\" style=\"padding: 6px 12px; font-size: 12px;\">📋 Ver</button><a href=\"/api/chamadas/historico/" + call.id + "/exportar?format=xlsx\" style=\"padding: 6px 12px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 4px; text-decoration: none;\">📥 Excel</a><button onclick=\"deleteCall(" + call.id + ")\" class=\"btn-danger\" style=\"padding: 6px 12px; font-size: 12px;\">🗑️ Excluir</button></div></td></tr>"; }).join(""); html += "</tbody></table>"; container.innerHTML = html; } async function showDetails(callId) { try { const resp = await fetch("/api/chamadas/historico/" + callId + "/detalhes"); if (!resp.ok) throw new Error("Falha ao carregar detalhes"); const data = await resp.json(); const call = data.call; const records = data.records; const modal = document.getElementById("detailsModal"); const modalBody = document.getElementById("modalBody"); let html = "<div><p><strong>Sala:</strong> " + call.class_name + "</p><p><strong>Data:</strong> " + new Date(call.session_date).toLocaleDateString("pt-BR") + "</p><p><strong>Horário:</strong> " + new Date(call.session_start_time).toLocaleTimeString("pt-BR") + "</p><p><strong>Presentes:</strong> " + call.total_present + " / " + call.total_students + "</p><hr style=\"border: none; border-top: 1px solid var(--border-color); margin: 20px 0;\"><h4 style=\"margin-bottom: 12px;\">Alunos Presentes:</h4><table style=\"width: 100%; font-size: 13px;\"><thead><tr style=\"border-bottom: 2px solid var(--border-color);\"><th style=\"text-align: left; padding: 8px;\">Nome</th><th style=\"text-align: left; padding: 8px;\">Horário</th></tr></thead><tbody>"; if (records && records.length) { html += records.map(r => "<tr style=\"border-bottom: 1px solid var(--border-color);\"><td style=\"padding: 8px;\">" + r.student_name + "</td><td style=\"padding: 8px;\">" + new Date(r.attendance_time).toLocaleTimeString("pt-BR") + "</td></tr>").join(""); } else { html += "<tr><td colspan=\"2\" style=\"padding: 8px; text-align: center; color: var(--text-muted);\">Sem registros</td></tr>"; } html += "</tbody></table></div>"; modalBody.innerHTML = html; modal.style.display = "block"; } catch (err) { console.error("Erro:", err); alert("Erro ao carregar detalhes"); } } async function deleteCall(callId) { if (!confirm("Deseja realmente excluir este histórico de chamada?")) return; try { const resp = await fetch("/api/chamadas/historico/" + callId, { method: "DELETE" }); if (resp.ok) { alert("Chamada excluída com sucesso"); loadHistorico(); } else { alert("Erro ao excluir chamada"); } } catch (err) { console.error("Erro:", err); alert("Erro ao excluir chamada"); } } function closeModal() { document.getElementById("detailsModal").style.display = "none"; } function clearFilters() { document.getElementById("filterDate").value = ""; loadHistorico(); } window.addEventListener("click", (e) => { const modal = document.getElementById("detailsModal"); if (e.target === modal) modal.style.display = "none"; }); window.addEventListener("DOMContentLoaded", loadHistorico);</script></body></html>');
+});
+
 app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -4434,6 +4486,274 @@ app.get('/logout', ensureAuthenticated, (req, res) => {
     if (err) console.error(err);
     res.redirect('/');
   });
+});
+
+// ========== ENDPOINTS DE HISTÓRICO DE CHAMADAS ==========
+
+// GET: Listar histórico de chamadas
+app.get('/api/chamadas/historico', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  
+  try {
+    const query = req.user.role === 'admin'
+      ? `SELECT 
+          ch.id,
+          ch.class_id,
+          c.name as class_name,
+          ch.session_date,
+          ch.session_start_time,
+          ch.session_end_time,
+          ch.total_students,
+          ch.total_present,
+          ch.created_at,
+          u.username as professor_name
+         FROM call_history ch
+         JOIN classes c ON c.id = ch.class_id
+         JOIN users u ON u.id = ch.professor_id
+         ORDER BY ch.session_date DESC
+         LIMIT 500`
+      : `SELECT 
+          ch.id,
+          ch.class_id,
+          c.name as class_name,
+          ch.session_date,
+          ch.session_start_time,
+          ch.session_end_time,
+          ch.total_students,
+          ch.total_present,
+          ch.created_at,
+          u.username as professor_name
+         FROM call_history ch
+         JOIN classes c ON c.id = ch.class_id
+         JOIN users u ON u.id = ch.professor_id
+         WHERE ch.professor_id = $1
+         ORDER BY ch.session_date DESC
+         LIMIT 500`;
+    
+    const params = req.user.role === 'admin' ? [] : [req.user.id];
+    const result = await db.query(query, params);
+    
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Erro ao listar histórico:', err);
+    res.status(500).json({ error: 'Erro ao listar histórico' });
+  }
+});
+
+// GET: Detalhes de uma chamada (com lista de alunos)
+app.get('/api/chamadas/historico/:callId/detalhes', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  
+  try {
+    const callId = req.params.callId;
+    
+    const callQuery = req.user.role === 'admin'
+      ? `SELECT * FROM call_history WHERE id = $1`
+      : `SELECT * FROM call_history WHERE id = $1 AND professor_id = $2`;
+    
+    const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
+    const callResult = await db.query(callQuery, callParams);
+    
+    if (!callResult.rowCount) {
+      return res.status(404).json({ error: 'Chamada não encontrada' });
+    }
+    
+    const call = callResult.rows[0];
+    
+    // Buscar registros de presença
+    const recordsQuery = `
+      SELECT 
+        ar.id,
+        ar.student_name,
+        ar.student_id,
+        ar.attendance_time,
+        ar.attendance_date
+      FROM attendance_records ar
+      WHERE ar.session_id = $1
+      ORDER BY ar.attendance_time ASC
+    `;
+    
+    const recordsResult = await db.query(recordsQuery, [call.session_id]);
+    
+    res.json({
+      call: call,
+      records: recordsResult.rows
+    });
+  } catch (err) {
+    console.error('Erro ao buscar detalhes:', err);
+    res.status(500).json({ error: 'Erro ao buscar detalhes' });
+  }
+});
+
+// POST: Registrar nova chamada no histórico
+app.post('/api/chamadas/historico/registrar', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  
+  try {
+    const { session_id, class_id, session_name, session_date, total_students, total_present } = req.body;
+    
+    if (!session_id || !class_id || !session_name || !session_date) {
+      return res.status(400).json({ error: 'Parâmetros obrigatórios faltando' });
+    }
+    
+    const result = await db.query(`
+      INSERT INTO call_history 
+      (class_id, session_id, professor_id, session_name, session_date, session_start_time, total_students, total_present)
+      VALUES ($1, $2, $3, $4, $5::date, NOW(), $6, $7)
+      RETURNING id
+    `, [class_id, session_id, req.user.id, session_name, session_date, total_students || 0, total_present || 0]);
+    
+    res.json({ success: true, call_id: result.rows[0].id });
+  } catch (err) {
+    console.error('Erro ao registrar chamada:', err);
+    res.status(500).json({ error: 'Erro ao registrar chamada' });
+  }
+});
+
+// POST: Registrar presença de aluno no histórico
+app.post('/api/chamadas/historico/:callId/registrar-aluno', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  
+  try {
+    const callId = req.params.callId;
+    const { student_name, student_id, attendance_date } = req.body;
+    
+    if (!student_name || !attendance_date) {
+      return res.status(400).json({ error: 'Parâmetros obrigatórios faltando' });
+    }
+    
+    // Buscar dados da chamada
+    const callQuery = req.user.role === 'admin'
+      ? `SELECT * FROM call_history WHERE id = $1`
+      : `SELECT * FROM call_history WHERE id = $1 AND professor_id = $2`;
+    
+    const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
+    const callResult = await db.query(callQuery, callParams);
+    
+    if (!callResult.rowCount) {
+      return res.status(404).json({ error: 'Chamada não encontrada' });
+    }
+    
+    const call = callResult.rows[0];
+    
+    // Registrar presença
+    const result = await db.query(`
+      INSERT INTO attendance_records 
+      (session_id, class_id, professor_id, student_name, student_id, attendance_date, attendance_time)
+      VALUES ($1, $2, $3, $4, $5, $6::date, NOW())
+      RETURNING id
+    `, [call.session_id, call.class_id, req.user.id, student_name, student_id, attendance_date]);
+    
+    res.json({ success: true, record_id: result.rows[0].id });
+  } catch (err) {
+    console.error('Erro ao registrar aluno:', err);
+    res.status(500).json({ error: 'Erro ao registrar aluno' });
+  }
+});
+
+// GET: Exportar chamada em Excel
+app.get('/api/chamadas/historico/:callId/exportar', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('Erro: DB não conectado');
+  
+  try {
+    const callId = req.params.callId;
+    const format = req.query.format || 'xlsx';
+    
+    const callQuery = req.user.role === 'admin'
+      ? `SELECT ch.*, c.name as class_name FROM call_history ch 
+         JOIN classes c ON c.id = ch.class_id WHERE ch.id = $1`
+      : `SELECT ch.*, c.name as class_name FROM call_history ch 
+         JOIN classes c ON c.id = ch.class_id WHERE ch.id = $1 AND ch.professor_id = $2`;
+    
+    const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
+    const callResult = await db.query(callQuery, callParams);
+    
+    if (!callResult.rowCount) {
+      return res.status(404).send('Chamada não encontrada');
+    }
+    
+    const call = callResult.rows[0];
+    
+    // Buscar registros de presença
+    const recordsResult = await db.query(`
+      SELECT 
+        ar.student_name,
+        ar.student_id,
+        ar.attendance_time,
+        ar.attendance_date
+      FROM attendance_records ar
+      WHERE ar.session_id = $1
+      ORDER BY ar.attendance_time ASC
+    `, [call.session_id]);
+    
+    const rows = recordsResult.rows;
+    
+    if (format === 'xlsx') {
+      const sheetData = rows.map(r => ({
+        Nome: r.student_name,
+        ID: r.student_id || '',
+        'Data': new Date(r.attendance_date).toLocaleDateString('pt-BR'),
+        'Horário': new Date(r.attendance_time).toLocaleTimeString('pt-BR')
+      }));
+      
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(sheetData);
+      worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamada');
+      
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g,'_')}-${call.session_date}.xlsx"`);
+      res.send(buffer);
+    } else {
+      const csv = ['Nome,ID,Data,Horário', 
+        ...rows.map(r => `${r.student_name},${r.student_id || ''},${new Date(r.attendance_date).toLocaleDateString('pt-BR')},${new Date(r.attendance_time).toLocaleTimeString('pt-BR')}`)
+      ].join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g,'_')}-${call.session_date}.csv"`);
+      res.send(csv);
+    }
+  } catch (err) {
+    console.error('Erro ao exportar:', err);
+    res.status(500).send('Erro ao exportar chamada');
+  }
+});
+
+// GET: Deletar chamada do histórico
+app.delete('/api/chamadas/historico/:callId', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  
+  try {
+    const callId = req.params.callId;
+    
+    const callQuery = req.user.role === 'admin'
+      ? `SELECT id FROM call_history WHERE id = $1`
+      : `SELECT id FROM call_history WHERE id = $1 AND professor_id = $2`;
+    
+    const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
+    const callResult = await db.query(callQuery, callParams);
+    
+    if (!callResult.rowCount) {
+      return res.status(404).json({ error: 'Chamada não encontrada' });
+    }
+    
+    await db.query('BEGIN');
+    try {
+      await db.query(`DELETE FROM attendance_records WHERE session_id = (SELECT session_id FROM call_history WHERE id = $1)`, [callId]);
+      await db.query(`DELETE FROM call_history WHERE id = $1`, [callId]);
+      await db.query('COMMIT');
+      
+      res.json({ success: true });
+    } catch (err) {
+      await db.query('ROLLBACK');
+      throw err;
+    }
+  } catch (err) {
+    console.error('Erro ao deletar chamada:', err);
+    res.status(500).json({ error: 'Erro ao deletar chamada' });
+  }
 });
 
 // START
