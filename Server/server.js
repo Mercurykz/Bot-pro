@@ -2906,7 +2906,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         ? '<span style="font-size:12px; color:#10b981;">🟢 Ativa</span>'
         : '<span style="font-size:12px; color:var(--text-muted);">⚪ Encerrada</span>';
       const exportDate = date || (session.start_time ? session.start_time.slice(0, 10) : 'sem-data');
-      const reopenBtn = !session.active
+      const reopenBtn = !session.active && !session.is_legacy
         ? '<form method="POST" action="/chamadas/' + session.session_id + '/reopen" style="display:inline;margin:0;" onsubmit="return confirm(\'Deseja reabrir esta chamada?\');"><button type="submit" style="padding:8px 12px; font-size:12px;">🔄 Reabrir</button></form>'
         : '';
 
@@ -2955,23 +2955,100 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   try {
-    const sessions = req.user.role === 'admin'
-      ? await db.query(
-          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           ORDER BY s.start_time DESC
-           LIMIT 120`
-        )
-      : await db.query(
-          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           WHERE c.professor_id = $1
-           ORDER BY s.start_time DESC
-           LIMIT 120`,
-          [req.user.id]
-        );
+    const schema = await getAttendanceSchema();
+    let sessions;
+
+    if (schema.hasClassId) {
+      sessions = req.user.role === 'admin'
+        ? await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC
+            LIMIT 120`
+          )
+        : await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+              WHERE c.professor_id = $1
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+                AND c.professor_id = $1
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC
+            LIMIT 120`,
+            [req.user.id]
+          );
+    } else {
+      sessions = req.user.role === 'admin'
+        ? await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             ORDER BY s.start_time DESC
+             LIMIT 120`
+          )
+        : await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             WHERE c.professor_id = $1
+             ORDER BY s.start_time DESC
+             LIMIT 120`,
+            [req.user.id]
+          );
+    }
+
     console.log(`[DEBUG] /chamadas/api - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões`);
     res.json(sessions.rows);
   } catch (err) {
@@ -2984,23 +3061,103 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const date = req.params.date; // YYYY-MM-DD
   try {
-    const sessions = req.user.role === 'admin'
-      ? await db.query(
-          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           WHERE DATE(s.start_time) = $1
-           ORDER BY s.start_time DESC`,
-          [date]
-        )
-      : await db.query(
-          `SELECT s.id AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time
-           FROM class_sessions s
-           JOIN classes c ON c.id = s.class_id
-           WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
-           ORDER BY s.start_time DESC`,
-          [req.user.id, date]
-        );
+    const schema = await getAttendanceSchema();
+    let sessions;
+
+    if (schema.hasClassId) {
+      sessions = req.user.role === 'admin'
+        ? await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+              WHERE DATE(s.start_time) = $1
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+                AND DATE(a.login_at) = $1::date
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC`,
+            [date]
+          )
+        : await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+              WHERE c.professor_id = $1
+                AND DATE(s.start_time) = $2
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+                AND c.professor_id = $1
+                AND DATE(a.login_at) = $2::date
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC`,
+            [req.user.id, date]
+          );
+    } else {
+      sessions = req.user.role === 'admin'
+        ? await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             WHERE DATE(s.start_time) = $1
+             ORDER BY s.start_time DESC`,
+            [date]
+          )
+        : await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
+             ORDER BY s.start_time DESC`,
+            [req.user.id, date]
+          );
+    }
+
     console.log(`[DEBUG] /chamadas/api/${date} - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões para ${date}`);
     res.json(sessions.rows);
   } catch (err) {
@@ -3015,20 +3172,61 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
   const date = req.query.date;
   try {
     const schema = await getAttendanceSchema();
-    const sessionResult = await db.query(`SELECT s.id, s.class_id, c.name FROM class_sessions s JOIN classes c ON c.id = s.class_id WHERE s.id = $1`, [sessionId]);
-    if (!sessionResult.rowCount) return res.status(404).send('Sessão não encontrada');
+    const legacyMatch = /^legacy-(\d+)-(\d{4}-\d{2}-\d{2})$/.exec(sessionId);
+    let sessionData;
+    let exportQuery;
+    let exportFileDate = date;
 
-    const sessionData = sessionResult.rows[0];
+    if (legacyMatch) {
+      const legacyClassId = parseInt(legacyMatch[1], 10);
+      const legacyDate = legacyMatch[2];
 
-    const exportQuery = schema.hasClassSessionId
-      ? {
-          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-          params: [sessionId]
-        }
-      : {
-          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
-          params: [sessionData.class_id]
-        };
+      const classResult = req.user.role === 'admin'
+        ? await db.query(`SELECT id, name FROM classes WHERE id = $1`, [legacyClassId])
+        : await db.query(`SELECT id, name FROM classes WHERE id = $1 AND professor_id = $2`, [legacyClassId, req.user.id]);
+
+      if (!classResult.rowCount) return res.status(404).send('Chamada antiga não encontrada.');
+
+      sessionData = { class_id: legacyClassId, name: classResult.rows[0].name };
+      exportFileDate = legacyDate;
+
+      exportQuery = {
+        sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+              FROM attendances a
+              LEFT JOIN users u ON a.student_id = u.id
+              WHERE a.class_id = $1
+                AND DATE(a.login_at) = $2::date
+              ORDER BY a.login_at ASC`,
+        params: [legacyClassId, legacyDate]
+      };
+    } else {
+      const sessionResult = req.user.role === 'admin'
+        ? await db.query(`SELECT s.id, s.class_id, s.start_time, c.name FROM class_sessions s JOIN classes c ON c.id = s.class_id WHERE s.id = $1`, [sessionId])
+        : await db.query(`SELECT s.id, s.class_id, s.start_time, c.name FROM class_sessions s JOIN classes c ON c.id = s.class_id WHERE s.id = $1 AND c.professor_id = $2`, [sessionId, req.user.id]);
+
+      if (!sessionResult.rowCount) return res.status(404).send('Sessão não encontrada');
+
+      sessionData = sessionResult.rows[0];
+
+      exportQuery = schema.hasClassSessionId
+        ? {
+            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+                  FROM attendances a
+                  LEFT JOIN users u ON a.student_id = u.id
+                  WHERE a.class_session_id = $1
+                     OR (a.class_session_id IS NULL AND a.class_id = $2 AND DATE(a.login_at) = DATE($3::timestamptz))
+                  ORDER BY a.login_at ASC`,
+            params: [sessionId, sessionData.class_id, sessionData.start_time]
+          }
+        : {
+            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+                  FROM attendances a
+                  LEFT JOIN users u ON a.student_id = u.id
+                  WHERE a.class_id = $1
+                  ORDER BY a.login_at ASC`,
+            params: [sessionData.class_id]
+          };
+    }
 
     const attendances = await db.query(exportQuery.sql, exportQuery.params);
 
@@ -3046,13 +3244,13 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${date}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${exportFileDate || 'sem-data'}.xlsx"`);
       res.send(buffer);
     } else {
       const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
 
       res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${date}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${exportFileDate || 'sem-data'}.csv"`);
       res.send(csv);
     }
   } catch (err) {
