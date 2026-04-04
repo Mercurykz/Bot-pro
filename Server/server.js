@@ -187,7 +187,11 @@ app.use(express.json());
         class_id INTEGER REFERENCES classes(id),
         start_time TIMESTAMPTZ NOT NULL,
         end_time TIMESTAMPTZ,
-        active BOOLEAN NOT NULL DEFAULT true
+        active BOOLEAN NOT NULL DEFAULT true,
+        geofence_latitude NUMERIC(10,7),
+        geofence_longitude NUMERIC(10,7),
+        geofence_radius_meters INTEGER,
+        geofence_source TEXT
       );
 
       CREATE TABLE IF NOT EXISTS attendances (
@@ -386,6 +390,12 @@ app.use(express.json());
     
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`);
     console.log('  ✓ classes.end_time OK');
+
+    await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_latitude NUMERIC(10,7)`);
+    await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_longitude NUMERIC(10,7)`);
+    await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER`);
+    await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_source TEXT`);
+    console.log('  ✓ class_sessions geofence por sessão OK');
     
     // Verificar se a coluna class_session_id existe antes de tentar usá-la
     const classSessionIdExists = await db.query(`
@@ -2408,14 +2418,39 @@ app.post('/subject/create', ensureAuthenticated, ensureProfessor, express.urlenc
 app.post('/class/:id/start-session', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
+  const useProfessorLocation = req.body?.useProfessorLocation === 'on' || req.body?.useProfessorLocation === 'true' || req.body?.useProfessorLocation === '1';
+  const professorLat = req.body?.professorLatitude !== undefined && req.body?.professorLatitude !== ''
+    ? Number(req.body.professorLatitude)
+    : null;
+  const professorLon = req.body?.professorLongitude !== undefined && req.body?.professorLongitude !== ''
+    ? Number(req.body.professorLongitude)
+    : null;
+
   try {
     const classData = req.user.role === 'admin'
       ? await db.query(`SELECT * FROM classes WHERE id = $1`, [classId])
       : await db.query(`SELECT * FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
     if (!classData.rowCount) return res.status(404).send('Sala não encontrada');
 
+    const cls = classData.rows[0];
+    const defaultRadius = Number(cls.campus_radius_meters || 150);
+    const hasProfessorGeo = professorLat !== null && professorLon !== null && !Number.isNaN(professorLat) && !Number.isNaN(professorLon);
+    if (useProfessorLocation && !hasProfessorGeo) {
+      return res.status(400).send('Não foi possível capturar a localização do professor para esta chamada.');
+    }
+
+    const canUseProfessorGeo = useProfessorLocation && hasProfessorGeo;
+
+    const geofenceLat = canUseProfessorGeo ? professorLat : (cls.campus_latitude !== null ? Number(cls.campus_latitude) : null);
+    const geofenceLon = canUseProfessorGeo ? professorLon : (cls.campus_longitude !== null ? Number(cls.campus_longitude) : null);
+    const geofenceSource = canUseProfessorGeo ? 'professor_live' : 'class_default';
+
     await db.query(`UPDATE class_sessions SET active = false, end_time = NOW() WHERE class_id = $1 AND active = true`, [classId]);
-    await db.query(`INSERT INTO class_sessions (class_id, start_time, active) VALUES ($1, NOW(), true)`, [classId]);
+    await db.query(
+      `INSERT INTO class_sessions (class_id, start_time, active, geofence_latitude, geofence_longitude, geofence_radius_meters, geofence_source)
+       VALUES ($1, NOW(), true, $2, $3, $4, $5)`,
+      [classId, geofenceLat, geofenceLon, defaultRadius, geofenceSource]
+    );
     res.redirect(`/class/${classId}`);
   } catch (err) {
     console.error(err);
@@ -2495,11 +2530,20 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
 
   try {
     const schema = await getAttendanceSchema();
-    const sessionRes = await db.query(`SELECT id, start_time FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
+    const sessionRes = await db.query(
+      `SELECT id, start_time, geofence_latitude, geofence_longitude, geofence_radius_meters, geofence_source
+       FROM class_sessions
+       WHERE class_id = $1 AND active = true
+       LIMIT 1`,
+      [classId]
+    );
     if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
 
     const sessionId = sessionRes.rows[0].id;
     const sessionStartTime = sessionRes.rows[0].start_time;
+    const sessionGeofenceLat = sessionRes.rows[0].geofence_latitude !== null ? Number(sessionRes.rows[0].geofence_latitude) : null;
+    const sessionGeofenceLon = sessionRes.rows[0].geofence_longitude !== null ? Number(sessionRes.rows[0].geofence_longitude) : null;
+    const sessionGeofenceRadius = sessionRes.rows[0].geofence_radius_meters !== null ? Number(sessionRes.rows[0].geofence_radius_meters) : null;
 
     const classMeta = await db.query(
       `SELECT term_id, course_id, campus_latitude, campus_longitude, campus_radius_meters
@@ -2513,9 +2557,12 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
     if (classMeta.rowCount) {
       const termId = classMeta.rows[0].term_id;
       const courseId = classMeta.rows[0].course_id;
-      const campusLatitude = classMeta.rows[0].campus_latitude !== null ? Number(classMeta.rows[0].campus_latitude) : null;
-      const campusLongitude = classMeta.rows[0].campus_longitude !== null ? Number(classMeta.rows[0].campus_longitude) : null;
-      const campusRadiusMeters = Number(classMeta.rows[0].campus_radius_meters || 150);
+      const classCampusLatitude = classMeta.rows[0].campus_latitude !== null ? Number(classMeta.rows[0].campus_latitude) : null;
+      const classCampusLongitude = classMeta.rows[0].campus_longitude !== null ? Number(classMeta.rows[0].campus_longitude) : null;
+      const classCampusRadiusMeters = Number(classMeta.rows[0].campus_radius_meters || 150);
+      const campusLatitude = sessionGeofenceLat !== null ? sessionGeofenceLat : classCampusLatitude;
+      const campusLongitude = sessionGeofenceLon !== null ? sessionGeofenceLon : classCampusLongitude;
+      const campusRadiusMeters = sessionGeofenceRadius !== null ? sessionGeofenceRadius : classCampusRadiusMeters;
       const policyRes = await db.query(
         `SELECT *
          FROM attendance_policies
@@ -3059,7 +3106,11 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
   </div>
 
   ${(req.user.role === 'professor' || req.user.role === 'admin') && (!activeSession || !activeSession.active) ? `<div class="card">
-    <form method="POST" action="/class/${classId}/start-session">
+    <form id="start-session-form" method="POST" action="/class/${classId}/start-session">
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; color:var(--text-light); font-weight:500; margin-bottom:8px;">
+        <input id="use-professor-location" name="useProfessorLocation" type="checkbox" style="width:18px; height:18px;" />
+        Usar minha localização atual como base desta aula (laboratório/sala variável)
+      </label>
       <button type="submit">▶️ Iniciar Chamada</button>
     </form>
   </div>` : ''}
@@ -3141,6 +3192,50 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
       modal.style.display = 'none';
     }
   });
+
+  const startSessionForm = document.getElementById('start-session-form');
+  if (startSessionForm) {
+    startSessionForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const useProfessorLocation = document.getElementById('use-professor-location')?.checked;
+
+      const ensureHidden = (name, value) => {
+        let input = startSessionForm.querySelector('input[name="' + name + '"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          startSessionForm.appendChild(input);
+        }
+        input.value = value;
+      };
+
+      ensureHidden('useProfessorLocation', useProfessorLocation ? '1' : '0');
+
+      if (useProfessorLocation && navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 7000,
+              maximumAge: 0
+            });
+          });
+          ensureHidden('professorLatitude', String(pos.coords.latitude));
+          ensureHidden('professorLongitude', String(pos.coords.longitude));
+        } catch (_) {
+          showErrorModal(
+            '📍 Localização não capturada',
+            'Ative a localização para usar sua posição como base da chamada, ou desmarque a opção e tente novamente.',
+            '📍'
+          );
+          return;
+        }
+      }
+
+      startSessionForm.submit();
+    });
+  }
 
   // Formulário de presença via AJAX
   const attendanceForm = document.getElementById('attendance-form');
