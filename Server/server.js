@@ -404,6 +404,10 @@ app.use(express.json());
     console.log('  ✓ attendances.longitude OK');
     
     // Criar índices para attendances
+    await db.query(`ALTER TABLE attendances DROP CONSTRAINT IF EXISTS attendances_class_id_student_id_key`);
+    await db.query(`DROP INDEX IF EXISTS attendances_class_id_student_id_key`);
+    console.log('  ✓ legado attendances_class_id_student_id_key removido');
+
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
     console.log('  ✓ attendances_class_session_student_idx OK');
     
@@ -2579,6 +2583,13 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
         success: false,
         error: 'duplicate_name',
         message: 'Este nome já foi registrado nesta chamada. Você não pode se registrar com um nome já utilizado.'
+      });
+    }
+    if (err.code === '23505' && err.constraint === 'attendances_class_id_student_id_key') {
+      return res.status(400).json({
+        success: false,
+        error: 'legacy_unique_constraint',
+        message: 'Presença bloqueada por regra legada. Reinicie o servidor para aplicar a migração automática.'
       });
     }
     res.status(500).json({ success: false, error: 'Erro ao registrar presença' });
