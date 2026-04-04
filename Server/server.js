@@ -46,6 +46,15 @@ function checkRateLimit(key, limit, windowMs) {
   };
 }
 
+function normalizeFullName(name) {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 async function getAttendanceSchema() {
   if (!db) return { hasClassSessionId: false, hasClassId: false };
   if (attendanceSchemaCache) return attendanceSchemaCache;
@@ -2542,11 +2551,29 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
 
     if (existing.rowCount) {
       const currentName = existing.rows[0].student_name || '';
-      if (currentName.trim() !== fullName) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'already_registered',
-          message: `Você não pode registrar presença pois já registrou com o nome '${currentName}'` 
+      const currentNorm = normalizeFullName(currentName);
+      const incomingNorm = normalizeFullName(fullName);
+
+      if (currentNorm !== incomingNorm) {
+        // Mesmo aluno (student_id), permitindo atualizar o nome digitado no mesmo check-in
+        if (schema.hasClassSessionId) {
+          await db.query(
+            `UPDATE attendances
+             SET student_name = $1
+             WHERE class_session_id = $2 AND student_id = $3`,
+            [fullName, sessionId, req.user.id]
+          );
+        } else if (schema.hasClassId) {
+          await db.query(
+            `UPDATE attendances
+             SET student_name = $1
+             WHERE class_id = $2 AND student_id = $3`,
+            [fullName, classId, req.user.id]
+          );
+        }
+        return res.json({
+          success: true,
+          message: `Presença já registrada. Nome atualizado para '${fullName}'.`
         });
       }
       return res.json({ success: true, message: 'Presença já registrada' });
