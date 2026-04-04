@@ -411,8 +411,9 @@ app.use(express.json());
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
     console.log('  ✓ attendances_class_session_student_idx OK');
     
-    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
-    console.log('  ✓ attendances_class_session_name_idx OK');
+    await db.query(`DROP INDEX IF EXISTS attendances_class_session_name_idx`);
+    await db.query(`CREATE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
+    console.log('  ✓ attendances_class_session_name_idx ajustado para não-único (suporta homônimos)');
 
     // Criar índices para attendance_records
     await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_session_idx ON attendance_records(session_id)`);
