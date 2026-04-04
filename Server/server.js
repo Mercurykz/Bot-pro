@@ -55,6 +55,22 @@ function normalizeFullName(name) {
     .toLowerCase();
 }
 
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // metros
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 async function getAttendanceSchema() {
   if (!db) return { hasClassSessionId: false, hasClassId: false };
   if (attendanceSchemaCache) return attendanceSchemaCache;
@@ -356,6 +372,11 @@ app.use(express.json());
 
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS class_code TEXT`);
     console.log('  ✓ classes.class_code OK');
+
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS campus_latitude NUMERIC(10,7)`);
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS campus_longitude NUMERIC(10,7)`);
+    await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS campus_radius_meters INTEGER NOT NULL DEFAULT 150`);
+    console.log('  ✓ classes geofence (campus_latitude/campus_longitude/campus_radius_meters) OK');
     
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
     console.log('  ✓ classes.active OK');
@@ -2454,6 +2475,10 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
   const qrToken = (req.body.qrToken || req.body.qr_token || '').trim();
   const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '').toString().slice(0, 120);
   const ipAddress = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+  const latitudeRaw = req.body.latitude;
+  const longitudeRaw = req.body.longitude;
+  const latitude = latitudeRaw !== undefined && latitudeRaw !== '' ? Number(latitudeRaw) : null;
+  const longitude = longitudeRaw !== undefined && longitudeRaw !== '' ? Number(longitudeRaw) : null;
 
   const rl = checkRateLimit(`join:${classId}:${ipAddress}`, 12, 60 * 1000);
   if (!rl.allowed) {
@@ -2477,7 +2502,10 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
     const sessionStartTime = sessionRes.rows[0].start_time;
 
     const classMeta = await db.query(
-      `SELECT term_id, course_id FROM classes WHERE id = $1 LIMIT 1`,
+      `SELECT term_id, course_id, campus_latitude, campus_longitude, campus_radius_meters
+       FROM classes
+       WHERE id = $1
+       LIMIT 1`,
       [classId]
     );
 
@@ -2485,6 +2513,9 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
     if (classMeta.rowCount) {
       const termId = classMeta.rows[0].term_id;
       const courseId = classMeta.rows[0].course_id;
+      const campusLatitude = classMeta.rows[0].campus_latitude !== null ? Number(classMeta.rows[0].campus_latitude) : null;
+      const campusLongitude = classMeta.rows[0].campus_longitude !== null ? Number(classMeta.rows[0].campus_longitude) : null;
+      const campusRadiusMeters = Number(classMeta.rows[0].campus_radius_meters || 150);
       const policyRes = await db.query(
         `SELECT *
          FROM attendance_policies
@@ -2495,6 +2526,26 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
         [termId, courseId]
       );
       policy = policyRes.rows[0] || null;
+
+      const geofenceEnabled = Boolean(policy?.geofence_enabled);
+      if (geofenceEnabled && campusLatitude !== null && campusLongitude !== null) {
+        if (latitude === null || longitude === null || Number.isNaN(latitude) || Number.isNaN(longitude)) {
+          return res.status(400).json({
+            success: false,
+            error: 'geofence_location_required',
+            message: 'Localização necessária para registrar presença nesta sala.'
+          });
+        }
+
+        const dist = distanceMeters(latitude, longitude, campusLatitude, campusLongitude);
+        if (dist > campusRadiusMeters) {
+          return res.status(400).json({
+            success: false,
+            error: 'geofence_out_of_range',
+            message: `Você está fora do raio permitido da sala (${Math.round(dist)}m de distância, limite ${campusRadiusMeters}m).`
+          });
+        }
+      }
     }
 
     const nowMs = Date.now();
@@ -2587,18 +2638,18 @@ app.post('/class/:id/join', ensureAuthenticated, ensureAluno, express.urlencoded
 
     if (schema.hasClassSessionId && schema.hasClassId) {
       await db.query(
-        `INSERT INTO attendances (class_session_id, class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8)`,
-        [sessionId, classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
+        `INSERT INTO attendances (class_session_id, class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id, latitude, longitude) VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10)`,
+        [sessionId, classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId, latitude, longitude]
       );
     } else if (schema.hasClassSessionId) {
       await db.query(
-        `INSERT INTO attendances (class_session_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)`,
-        [sessionId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
+        `INSERT INTO attendances (class_session_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id, latitude, longitude) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)`,
+        [sessionId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId, latitude, longitude]
       );
     } else {
       await db.query(
-        `INSERT INTO attendances (class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)`,
-        [classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId]
+        `INSERT INTO attendances (class_id, student_id, student_name, login_at, status, late_minutes, ip_address, device_id, latitude, longitude) VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)`,
+        [classId, req.user.id, fullName, attendanceStatus, lateMinutes, ipAddress, deviceId, latitude, longitude]
       );
     }
 
@@ -3097,12 +3148,37 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     attendanceForm.addEventListener('submit', async function(e) {
       e.preventDefault();
       const fullName = document.getElementById('fullName-input').value;
+      let latitude = '';
+      let longitude = '';
+
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0
+            });
+          });
+          latitude = String(pos.coords.latitude);
+          longitude = String(pos.coords.longitude);
+        } catch (_) {
+          // geolocalização é opcional no frontend; backend decide se exige
+        }
+      }
       
       try {
+        const bodyParams = new URLSearchParams();
+        bodyParams.set('fullName', fullName);
+        if (latitude && longitude) {
+          bodyParams.set('latitude', latitude);
+          bodyParams.set('longitude', longitude);
+        }
+
         const response = await fetch('/class/${classId}/join', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'fullName=' + encodeURIComponent(fullName)
+          body: bodyParams.toString()
         });
         
         const data = await response.json();
@@ -3125,8 +3201,20 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
               data.message,
               '⚠️'
             );
+          } else if (data.error === 'geofence_location_required') {
+            showErrorModal(
+              '📍 Localização Necessária',
+              data.message || 'Ative a localização do navegador para registrar presença nesta sala.',
+              '📍'
+            );
+          } else if (data.error === 'geofence_out_of_range') {
+            showErrorModal(
+              '🚫 Fora da Área Permitida',
+              data.message || 'Você está fora do raio permitido para esta chamada.',
+              '🚫'
+            );
           } else {
-            showErrorModal('❌ Erro', data.error || 'Erro ao registrar presença', '❌');
+            showErrorModal('❌ Erro', data.message || data.error || 'Erro ao registrar presença', '❌');
           }
         }
       } catch (err) {
