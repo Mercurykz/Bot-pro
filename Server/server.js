@@ -2082,6 +2082,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
       <span>👨‍🏫 Prof. ${classData.professor_name}</span>
       <span>📘 ${classData.subject_name || 'Sem matéria'}</span>
       <span>${statusBadge}</span>
+      ${(req.user.role === 'professor' || req.user.role === 'admin') ? `<a href="/class/${classId}/grade" class="btn" style="background: linear-gradient(135deg, var(--primary), var(--secondary)); padding: 6px 14px; font-size: 12px; border-radius: 6px;">📊 Grade Unificada</a>` : ''}
     </div>
   </div>
 
@@ -2398,6 +2399,339 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   } catch (err) {
     console.error('[ERROR] /class/:id/attendees:', err.message);
     res.status(500).json({ error: 'Falha ao buscar participantes', details: err.message });
+  }
+});
+
+app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  const classId = req.params.id;
+  try {
+    const classRes = await db.query(`
+      SELECT c.*, u.username AS professor_name, s.name AS subject_name
+      FROM classes c
+      JOIN users u ON c.professor_id = u.id
+      LEFT JOIN subjects s ON c.subject_id = s.id
+      WHERE c.id = $1
+    `, [classId]);
+    if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
+    const classData = classRes.rows[0];
+
+    res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercury Class | Grade de Frequência - ${classData.name}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>${MERCURY_THEME}</style>
+  <style>
+    .grid-container {
+      overflow-x: auto;
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 10px;
+    }
+    .presence-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .p-present {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .p-absent {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .p-late {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .p-justified {
+      background: rgba(59, 130, 246, 0.15);
+      color: #3b82f6;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .p-none {
+      color: var(--text-muted);
+      font-weight: 300;
+    }
+    .metrics-col {
+      background: rgba(255, 255, 255, 0.02) !important;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Mercury Class</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <div>
+      <h1>📊 Grade de Frequência</h1>
+      <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Sala: <strong>${classData.name}</strong> | Matéria: <strong>${classData.subject_name || 'Sem Matéria'}</strong></p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button onclick="exportGradeToExcel()" class="btn btn-export-all">📥 Exportar Excel</button>
+      <a href="/class/${classId}" class="btn" style="background: var(--card-dark); border: 1px solid var(--border-color);">← Voltar à Sala</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2>📈 Frequência Geral dos Alunos</h2>
+      <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-muted);">
+        <span><span class="presence-badge p-present">P</span> Presente</span>
+        <span><span class="presence-badge p-late">A</span> Atrasado</span>
+        <span><span class="presence-badge p-justified">J</span> Justificado</span>
+        <span><span class="presence-badge p-absent">F</span> Falta</span>
+      </div>
+    </div>
+    <div class="grid-container">
+      <div id="grade-table-container">
+        <div class="loading">Buscando dados de frequência...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let gradeData = null;
+
+  async function loadGrade() {
+    const container = document.getElementById("grade-table-container");
+    try {
+      const resp = await fetch("/api/class/${classId}/grade-data");
+      if (!resp.ok) throw new Error("Falha ao carregar dados da grade");
+      const data = await resp.json();
+      gradeData = data;
+      renderGradeTable(data);
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div class="result-empty"><p>❌ Erro ao carregar grade de frequência.</p></div>';
+    }
+  }
+
+  function renderGradeTable(data) {
+    const container = document.getElementById("grade-table-container");
+    const { students, sessions, attendances } = data;
+
+    if (!students || !students.length) {
+      container.innerHTML = '<div class="result-empty"><p>📭 Nenhum aluno matriculado nesta sala.</p></div>';
+      return;
+    }
+
+    if (!sessions || !sessions.length) {
+      container.innerHTML = '<div class="result-empty"><p>📅 Nenhuma sessão de chamada realizada ainda.</p></div>';
+      return;
+    }
+
+    // Mapa rápido de presenças por [student_id][session_id]
+    const attMap = {};
+    attendances.forEach(att => {
+      const sId = att.student_id;
+      const sessId = att.class_session_id;
+      if (!attMap[sId]) attMap[sId] = {};
+      attMap[sId][sessId] = att;
+    });
+
+    let html = '<table><thead><tr><th>Aluno</th>';
+    
+    // Cabeçalho das colunas (Datas das chamadas)
+    sessions.forEach(sess => {
+      const date = new Date(sess.start_time).toLocaleDateString("pt-BR", { day: 'numeric', month: 'short' });
+      html += \'<th style="text-align: center; min-width: 80px;">\' + date + \'</th>\';
+    });
+
+    html += '<th style="text-align: center;" class="metrics-col">Presenças</th>';
+    html += '<th style="text-align: center;" class="metrics-col">% Freq.</th>';
+    html += '</tr></thead><tbody>';
+
+    // Linhas dos alunos
+    students.forEach(student => {
+      html += \'<tr><td><strong>\' + (student.student_name || student.username) + \'</strong></td>\';
+      
+      let presentCount = 0;
+      let totalCount = sessions.length;
+
+      sessions.forEach(sess => {
+        const att = attMap[student.student_id]?.[sess.id];
+        let cellHtml = \'<span class="presence-badge p-absent">F</span>\';
+        if (att) {
+          const status = att.status || \'presente\';
+          if (status === \'presente\') {
+            cellHtml = \'<span class="presence-badge p-present">P</span>\';
+            presentCount++;
+          } else if (status === \'atrasado\') {
+            cellHtml = \'<span class="presence-badge p-late">A</span>\';
+            presentCount++;
+          } else if (status === \'justificada\') {
+            cellHtml = \'<span class="presence-badge p-justified">J</span>\';
+            presentCount++;
+          } else if (status === \'falta\') {
+            cellHtml = \'<span class="presence-badge p-absent">F</span>\';
+          }
+        } else {
+          cellHtml = \'<span class="presence-badge p-absent">F</span>\';
+        }
+        html += \'<td style="text-align: center;">\' + cellHtml + \'</td>\';
+      });
+
+      const freqPercent = ((presentCount / totalCount) * 100).toFixed(1);
+      const freqColor = freqPercent >= 75 ? \'var(--success)\' : \'var(--danger)\';
+
+      html += \'<td style="text-align: center;" class="metrics-col">\' + presentCount + \' / \' + totalCount + \'</td>\';
+      html += \'<td style="text-align: center; color: \' + freqColor + \';" class="metrics-col">\' + freqPercent + \'%</td>\';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  }
+
+  async function exportGradeToExcel() {
+    if (!gradeData) return alert("Dados indisponíveis para exportação.");
+    window.location.href = "/class/${classId}/grade/exportar";
+  }
+
+  window.addEventListener("DOMContentLoaded", loadGrade);
+</script>
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar a grade de frequência');
+  }
+});
+
+app.get('/api/class/:id/grade-data', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  const classId = req.params.id;
+  try {
+    const studentsRes = await db.query(`
+      SELECT e.student_id, u.username, u.username AS student_name
+      FROM enrollments e
+      JOIN users u ON e.student_id = u.id
+      WHERE e.class_id = $1
+      ORDER BY u.username ASC
+    `, [classId]);
+
+    const sessionsRes = await db.query(`
+      SELECT id, start_time, end_time, active
+      FROM class_sessions
+      WHERE class_id = $1
+      ORDER BY start_time ASC
+    `, [classId]);
+
+    const attendancesRes = await db.query(`
+      SELECT id, class_session_id, student_id, login_at, status
+      FROM attendances
+      WHERE class_session_id IN (
+        SELECT id FROM class_sessions WHERE class_id = $1
+      )
+    `, [classId]);
+
+    res.json({
+      students: studentsRes.rows,
+      sessions: sessionsRes.rows,
+      attendances: attendancesRes.rows
+    });
+  } catch (err) {
+    console.error('Erro na API de dados da grade:', err);
+    res.status(500).json({ error: 'Falha ao buscar dados de frequência' });
+  }
+});
+
+app.get('/class/:id/grade/exportar', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('DB não conectado');
+  const classId = req.params.id;
+  try {
+    const classRes = await db.query('SELECT name FROM classes WHERE id = $1', [classId]);
+    if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
+    const className = classRes.rows[0].name;
+
+    const studentsRes = await db.query(`
+      SELECT e.student_id, u.username AS student_name
+      FROM enrollments e
+      JOIN users u ON e.student_id = u.id
+      WHERE e.class_id = $1
+      ORDER BY u.username ASC
+    `, [classId]);
+
+    const sessionsRes = await db.query(`
+      SELECT id, start_time FROM class_sessions WHERE class_id = $1 ORDER BY start_time ASC
+    `, [classId]);
+
+    const attendancesRes = await db.query(`
+      SELECT class_session_id, student_id, status FROM attendances
+      WHERE class_session_id IN (SELECT id FROM class_sessions WHERE class_id = $1)
+    `, [classId]);
+
+    const students = studentsRes.rows;
+    const sessions = sessionsRes.rows;
+    const attendances = attendancesRes.rows;
+
+    const attMap = {};
+    attendances.forEach(att => {
+      if (!attMap[att.student_id]) attMap[att.student_id] = {};
+      attMap[att.student_id][att.class_session_id] = att.status || 'presente';
+    });
+
+    const rows = students.map(student => {
+      const row = { 'Nome do Aluno': student.student_name };
+      let presentCount = 0;
+
+      sessions.forEach(sess => {
+        const dateStr = new Date(sess.start_time).toLocaleDateString('pt-BR');
+        const status = attMap[student.student_id]?.[sess.id] || 'falta';
+        let val = 'F';
+        if (status === 'presente') { val = 'P'; presentCount++; }
+        else if (status === 'atrasado') { val = 'A'; presentCount++; }
+        else if (status === 'justificada') { val = 'J'; presentCount++; }
+        row[dateStr] = val;
+      });
+
+      row['Total Presenças'] = `${presentCount} / ${sessions.length}`;
+      row['% Frequência'] = `${((presentCount / sessions.length) * 100).toFixed(1)}%`;
+      return row;
+    });
+
+    const XLSX = require('xlsx');
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Grade de Frequência');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Frequencia_${className.replace(/\\s+/g, '_')}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao exportar planilha de frequência');
   }
 });
 
