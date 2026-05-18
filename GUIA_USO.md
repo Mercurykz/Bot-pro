@@ -3,7 +3,7 @@
 ## 📱 Como Acessar
 
 ### Para Professores:
-1. Faça login no **Presença Plus**
+1. Faça login no **Mercury Class**
 2. No menu lateral, clique em **📚 Histórico**
 3. Você verá todas as suas chamadas antigas com:
    - Nome da sala de aula

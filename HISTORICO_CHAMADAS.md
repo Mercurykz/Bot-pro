@@ -1,4 +1,4 @@
-# 📚 Sistema de Histórico de Chamadas - Presença Plus
+# 📚 Sistema de Histórico de Chamadas - Mercury Class
 
 ## 📋 Resumo do que foi implementado
 

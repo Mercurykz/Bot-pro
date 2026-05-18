@@ -1,7 +1,7 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "description": "API e dashboard web do Presença Plus",
+  "description": "API e dashboard web do Mercury Class",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

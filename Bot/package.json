@@ -1,7 +1,7 @@
 {
   "name": "presence-bot",
   "version": "1.0.0",
-  "description": "Bot Discord do Presença Plus",
+  "description": "Bot Discord do Mercury Class",
   "main": "bot.js",
   "type": "commonjs",
   "scripts": {

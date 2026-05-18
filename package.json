@@ -2,7 +2,7 @@
   "name": "bot-pro-workspace",
   "version": "1.0.0",
   "private": true,
-  "description": "Workspace do Bot + Server (Presença Plus)",
+  "description": "Workspace do Bot + Server (Mercury Class)",
   "workspaces": [
     "Bot",
     "Server"

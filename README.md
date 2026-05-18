@@ -1,4 +1,4 @@
-# Presença Plus (Bot + Server)
+# Mercury Class (Bot + Server)
 
 Projeto de controle de presença com integração Discord, dividido em dois serviços:
 

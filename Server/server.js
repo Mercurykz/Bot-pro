@@ -8,6 +8,577 @@ const crypto = require('crypto');
 const XLSX = require('xlsx');
 const app = express();
 
+const MERCURY_THEME = `
+:root {
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --secondary: #8b5cf6;
+  --secondary-hover: #7c3aed;
+  --success: #10b981;
+  --success-hover: #059669;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --warning: #f59e0b;
+  --warning-hover: #d97706;
+  --bg-dark: #070913;
+  --bg-darker: #030408;
+  --card-dark: rgba(17, 24, 39, 0.45);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-light: #f8fafc;
+  --text-muted: #94a3b8;
+  --font-family: 'Poppins', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  background: radial-gradient(circle at top right, #131735 0%, var(--bg-dark) 70%) !important;
+  color: var(--text-light) !important;
+  min-height: 100vh;
+  display: flex;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-darker);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Sidebar Design */
+.sidebar {
+  width: 280px;
+  background: rgba(3, 4, 8, 0.85);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border-color);
+  padding: 30px 20px;
+  height: 100vh;
+  position: fixed;
+  overflow-y: auto;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.sidebar h2 {
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 20px;
+}
+
+.nav-menu {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-menu li {
+  margin: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+
+.nav-menu a {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px !important;
+  color: var(--text-muted) !important;
+  text-decoration: none;
+  border-radius: 12px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-left: 3px solid transparent !important;
+  background: transparent !important;
+  border-bottom: none !important;
+}
+
+.nav-menu a:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: var(--text-light) !important;
+  border-left-color: var(--primary) !important;
+  transform: translateX(4px);
+}
+
+.nav-menu a.active {
+  background: rgba(99, 102, 241, 0.1) !important;
+  color: var(--text-light) !important;
+  border-left-color: var(--primary) !important;
+  font-weight: 600;
+}
+
+/* User Info Sidebar */
+.user-info {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--primary);
+  margin-bottom: 10px;
+}
+
+.user-info p {
+  margin: 0 !important;
+  color: var(--text-light) !important;
+}
+
+.user-info p:first-child {
+  font-weight: 600;
+  margin-bottom: 5px !important;
+}
+
+.user-info p:last-child {
+  font-size: 11px;
+  display: inline-block;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white !important;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-top: 5px !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Content Wrapper */
+.content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 40px;
+  overflow-y: auto;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 20px;
+  margin-bottom: 0 !important;
+}
+
+.topbar h1 {
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ffffff, #cbd5e1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.topbar p {
+  color: var(--text-muted) !important;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+/* Cards Design with Glassmorphism */
+.card {
+  background: var(--card-dark) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color) !important;
+  padding: 28px !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 0 !important;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.card h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 20px !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Lists in Cards */
+ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+li {
+  padding: 16px 20px !important;
+  background: rgba(5, 7, 12, 0.3) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0 !important;
+  transition: all 0.2s ease;
+}
+
+li:hover {
+  background: rgba(5, 7, 12, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Inputs, Forms and Selects */
+form {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin-bottom: 0 !important;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+input[type="text"],
+input[type="date"],
+select {
+  padding: 14px 18px !important;
+  background: rgba(5, 7, 12, 0.5) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-light) !important;
+  border-radius: 10px !important;
+  font-family: var(--font-family) !important;
+  font-size: 14px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+input[type="text"]:focus,
+input[type="date"]:focus,
+select:focus {
+  outline: none !important;
+  border-color: var(--primary) !important;
+  background: rgba(5, 7, 12, 0.8) !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18) !important;
+}
+
+/* Buttons Design */
+button, .btn {
+  padding: 14px 28px !important;
+  background: linear-gradient(135deg, var(--primary), var(--secondary)) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+  font-family: var(--font-family) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-size: 14px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  text-decoration: none !important;
+}
+
+button:hover, .btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.35) !important;
+}
+
+button:active, .btn:active {
+  transform: translateY(0) !important;
+}
+
+button.btn-danger, .btn-danger {
+  background: linear-gradient(135deg, var(--danger), #be123c) !important;
+}
+button.btn-danger:hover, .btn-danger:hover {
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.35) !important;
+}
+
+.btn-export-all {
+  background: linear-gradient(135deg, var(--success), #047857) !important;
+}
+.btn-export-all:hover {
+  box-shadow: 0 8px 25px rgba(16, 185, 129, 0.35) !important;
+}
+
+/* Tables Design */
+table {
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 8px !important;
+  margin-top: 10px !important;
+}
+
+thead {
+  background: transparent !important;
+}
+
+th {
+  padding: 12px 20px !important;
+  text-align: left !important;
+  font-weight: 600 !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  border-bottom: none !important;
+}
+
+td {
+  padding: 16px 20px !important;
+  background: rgba(5, 7, 12, 0.25) !important;
+  border-top: 1px solid var(--border-color) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: #e2e8f0 !important;
+  font-size: 14px !important;
+}
+
+td:first-child {
+  border-left: 1px solid var(--border-color) !important;
+  border-top-left-radius: 12px !important;
+  border-bottom-left-radius: 12px !important;
+}
+
+td:last-child {
+  border-right: 1px solid var(--border-color) !important;
+  border-top-right-radius: 12px !important;
+  border-bottom-right-radius: 12px !important;
+}
+
+tbody tr {
+  transition: all 0.2s ease !important;
+}
+
+tbody tr:hover td {
+  background: rgba(5, 7, 12, 0.45) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Action Cells inside tables */
+.action-cell {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-cell a,
+.action-cell button {
+  padding: 8px 16px !important;
+  font-size: 12px !important;
+  white-space: nowrap;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  border: none !important;
+}
+
+.status-active, .badge-active {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: var(--success) !important;
+}
+
+.status-inactive, .badge-inactive {
+  background: rgba(148, 163, 184, 0.15) !important;
+  color: var(--text-muted) !important;
+}
+
+/* Back Link */
+.back-link {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px !important;
+  color: var(--text-muted) !important;
+  font-size: 14px !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease;
+}
+
+.back-link:hover {
+  color: var(--text-light) !important;
+  transform: translateX(-4px);
+}
+
+/* Theme Toggle Btn (kept for compatibility) */
+.theme-btn {
+  display: none !important;
+}
+
+/* Modals */
+.modal {
+  backdrop-filter: blur(10px) !important;
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+
+.modal-content {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Layout Grids */
+.grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+  gap: 20px !important;
+  margin-bottom: 0 !important;
+}
+
+.metric h2 {
+  font-size: 42px !important;
+  font-weight: 800 !important;
+  background: linear-gradient(135deg, var(--primary), var(--secondary)) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+.chart-container {
+  background: var(--card-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+  padding: 24px !important;
+}
+
+/* Home Login Page Centering */
+body.login-page {
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.container {
+  text-align: center;
+  max-width: 500px;
+  padding: 40px 20px;
+  margin: auto;
+}
+
+.logo {
+  font-size: 60px;
+  margin-bottom: 20px;
+  display: inline-block;
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 40px;
+  text-align: left;
+}
+
+.feature {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.feature-icon {
+  font-size: 24px;
+}
+
+.feature-text {
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+.footer {
+  margin-top: 40px;
+  font-size: 12px;
+  color: #475569;
+}
+
+/* Dashboard Specifics */
+.active-subject {
+  background: rgba(99, 102, 241, 0.2) !important;
+  border-left-color: var(--primary) !important;
+  color: var(--text-light) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  body {
+    flex-direction: column !important;
+  }
+  .sidebar {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 20px !important;
+  }
+  .content {
+    margin-left: 0 !important;
+    padding: 20px !important;
+  }
+  .topbar {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 15px !important;
+  }
+}
+`;
+
+
 let attendanceSchemaCache = null;
 const rateLimitStore = new Map();
 
@@ -784,111 +1355,14 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Sistema de Presença Discord</title>
+  <title>Mercury Class | Sistema de Presença Discord</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #f1f5f9;
-    }
-
-    .container {
-      text-align: center;
-      max-width: 500px;
-      padding: 40px 20px;
-    }
-
-    .logo {
-      font-size: 60px;
-      margin-bottom: 20px;
-      display: inline-block;
-    }
-
-    h1 {
-      font-size: 40px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    p {
-      font-size: 16px;
-      color: #94a3b8;
-      margin-bottom: 30px;
-      line-height: 1.6;
-    }
-
-    .features {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-      margin-bottom: 40px;
-      text-align: left;
-    }
-
-    .feature {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .feature-icon {
-      font-size: 24px;
-    }
-
-    .feature-text {
-      font-size: 14px;
-      color: #cbd5e1;
-    }
-
-    .btn {
-      display: inline-block;
-      padding: 16px 40px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white;
-      text-decoration: none;
-      border-radius: 10px;
-      font-weight: 600;
-      font-size: 16px;
-      transition: all 0.3s ease;
-      border: 2px solid transparent;
-      cursor: pointer;
-    }
-
-    .btn:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
-    }
-
-    .btn:active {
-      transform: translateY(-1px);
-    }
-
-    .footer {
-      margin-top: 40px;
-      font-size: 12px;
-      color: #475569;
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
   <div class="container">
     <div class="logo">✨</div>
-    <h1>Presença Plus</h1>
+    <h1>Mercury Class</h1>
     <p>Sistema inteligente de presença integrado com Discord</p>
     
     <div class="features">
@@ -913,7 +1387,7 @@ app.get('/', (req, res) => {
     <a href="/login" class="btn">Entrar com Discord</a>
 
     <div class="footer">
-      <p>© 2026 Presença Plus. Todos os direitos reservados.</p>
+      <p>© 2026 Mercury Class. Todos os direitos reservados.</p>
     </div>
   </div>
 </body>
@@ -1069,50 +1543,14 @@ app.get('/dashboard', async (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Presença Plus | Minha Frequência</title>
+<title>Mercury Class | Minha Frequência</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-:root {
-  --primary:#6366f1; --secondary:#8b5cf6; --bg-dark:#0f172a; --bg-darker:#020617;
-  --card-dark:#1e293b; --text-light:#f1f5f9; --text-muted:#94a3b8; --border-color:#334155; --success:#10b981;
-}
-.light {
-  --bg-dark:#f8fafc; --bg-darker:#f1f5f9; --card-dark:#ffffff; --text-light:#1e293b; --text-muted:#64748b; --border-color:#e2e8f0;
-}
-html, body { font-family:'Poppins',sans-serif; background:var(--bg-dark); color:var(--text-light); min-height:100%; }
-body { display:flex; }
-.sidebar { width:280px; background:var(--bg-darker); border-right:1px solid var(--border-color); padding:30px 20px; position:fixed; height:100vh; overflow-y:auto; }
-.sidebar h2 { font-size:24px; margin-bottom:14px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.user-info { background:var(--card-dark); padding:15px; border-radius:12px; margin-bottom:20px; border-left:4px solid var(--primary); }
-.user-info p:last-child { font-size:12px; color:#fff; background:var(--primary); padding:4px 10px; border-radius:20px; display:inline-block; margin-top:6px; }
-.nav-menu, .subject-menu { list-style:none; }
-.nav-menu li, .subject-menu li { margin-bottom:10px; }
-.nav-menu a, .subject-menu a { display:flex; justify-content:space-between; gap:10px; padding:12px 14px; color:var(--text-muted); text-decoration:none; border-radius:10px; border-left:3px solid transparent; transition:.25s; }
-.nav-menu a:hover, .subject-menu a:hover { background:var(--card-dark); color:var(--text-light); border-left-color:var(--primary); }
-.active-subject { background:var(--card-dark); color:var(--text-light)!important; border-left-color:var(--success)!important; }
-.content { margin-left:280px; flex:1; padding:40px; }
-.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; }
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-bottom:20px; }
-.card { background:var(--card-dark); border:1px solid var(--border-color); border-radius:14px; padding:22px; }
-.metric h2 { font-size:34px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.metric p { color:var(--text-muted); font-size:13px; text-transform:uppercase; letter-spacing:.7px; }
-.layout { display:grid; grid-template-columns: 340px 1fr; gap:16px; }
-.history li { padding:12px 0; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; gap:8px; }
-.history li:last-child { border-bottom:none; }
-.theme-btn { background:var(--card-dark); border:1px solid var(--border-color); color:var(--text-light); padding:10px 14px; border-radius:8px; cursor:pointer; }
-@media (max-width: 980px) { .layout { grid-template-columns:1fr; } }
-@media (max-width: 768px) {
-  body { flex-direction:column; }
-  .sidebar { position:static; width:100%; height:auto; }
-  .content { margin-left:0; padding:20px; }
-}
-</style>
+<style>${MERCURY_THEME}</style>
 </head>
 <body>
   <div class="sidebar">
-    <h2>✨ Presença Plus</h2>
+    <h2>✨ Mercury Class</h2>
     <div class="user-info">
       <p>${req.user.username}</p>
       <p>👨‍🎓 Aluno</p>
@@ -1261,385 +1699,17 @@ if (ctx) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Presença Plus | Dashboard</title>
+<title>Mercury Class | Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  --primary: #6366f1;
-  --secondary: #8b5cf6;
-  --danger: #ef4444;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --bg-dark: #0f172a;
-  --bg-darker: #020617;
-  --card-dark: #1e293b;
-  --text-light: #f1f5f9;
-  --text-muted: #94a3b8;
-  --border-color: #334155;
-}
-
-.light {
-  --primary: #6366f1;
-  --secondary: #8b5cf6;
-  --danger: #ef4444;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --bg-dark: #f8fafc;
-  --bg-darker: #f1f5f9;
-  --card-dark: #ffffff;
-  --text-light: #1e293b;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-}
-
-html, body {
-  font-family: 'Poppins', sans-serif;
-  background: var(--bg-dark);
-  color: var(--text-light);
-  height: 100%;
-}
-
-body {
-  display: flex;
-}
-
-.sidebar {
-  width: 280px;
-  background: var(--bg-darker);
-  border-right: 1px solid var(--border-color);
-  padding: 30px 20px;
-  overflow-y: auto;
-  position: fixed;
-  height: 100vh;
-}
-
-.sidebar h2 {
-  font-size: 24px;
-  margin-bottom: 10px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.user-info {
-  background: var(--card-dark);
-  padding: 15px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-  border-left: 4px solid var(--primary);
-}
-
-.user-info p:first-child {
-  font-weight: 600;
-  margin-bottom: 5px;
-}
-
-.user-info p:last-child {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: inline-block;
-  background: var(--primary);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 20px;
-  margin-top: 5px;
-}
-
-.nav-menu {
-  list-style: none;
-  margin-bottom: 20px;
-}
-
-.nav-menu li {
-  margin-bottom: 10px;
-}
-
-.nav-menu a {
-  display: block;
-  padding: 12px 16px;
-  color: var(--text-muted);
-  text-decoration: none;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-  border-left: 3px solid transparent;
-}
-
-.nav-menu a:hover {
-  background: var(--card-dark);
-  color: var(--text-light);
-  border-left-color: var(--primary);
-}
-
-.nav-menu a.logout {
-  color: var(--danger);
-}
-
-.content {
-  margin-left: 280px;
-  flex: 1;
-  padding: 40px;
-  overflow-y: auto;
-  max-height: 100vh;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 40px;
-}
-
-.topbar h1 {
-  font-size: 32px;
-  font-weight: 700;
-}
-
-.theme-btn {
-  background: var(--card-dark);
-  border: 1px solid var(--border-color);
-  padding: 10px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 18px;
-  transition: all 0.3s;
-}
-
-.theme-btn:hover {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 40px;
-}
-
-.card {
-  background: var(--card-dark);
-  border: 1px solid var(--border-color);
-  padding: 24px;
-  border-radius: 14px;
-  transition: all 0.3s ease;
-}
-
-.card:hover {
-  transform: translateY(-4px);
-  border-color: var(--primary);
-  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
-}
-
-.metric {
-  text-align: center;
-}
-
-.metric h2 {
-  font-size: 36px;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 8px;
-}
-
-.metric p {
-  color: var(--text-muted);
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.card h2 {
-  font-size: 20px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-ul {
-  list-style: none;
-}
-
-li {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-li:last-child {
-  border-bottom: none;
-}
-
-a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.3s;
-}
-
-a:hover {
-  color: var(--secondary);
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.status-active {
-  background: rgba(16, 185, 129, 0.2);
-  color: var(--success);
-}
-
-.status-inactive {
-  background: rgba(100, 116, 139, 0.2);
-  color: var(--text-muted);
-}
-
-form {
-  background: var(--card-dark);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  margin-bottom: 20px;
-}
-
-form input,
-form label {
-  display: block;
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-form input {
-  padding: 12px 16px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-darker);
-  color: var(--text-light);
-  border-radius: 8px;
-  font-family: 'Poppins', sans-serif;
-  font-size: 14px;
-  transition: border-color 0.3s;
-}
-
-form input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-form label {
-  font-weight: 500;
-  margin-bottom: 6px;
-}
-
-button {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
-  font-size: 14px;
-  transition: all 0.3s;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
-}
-
-button:active {
-  transform: translateY(0);
-}
-
-.chart-container {
-  background: var(--card-dark);
-  padding: 24px;
-  border-radius: 14px;
-  border: 1px solid var(--border-color);
-  margin-bottom: 20px;
-}
-
-canvas {
-  max-height: 300px;
-}
-
-@media (max-width: 1024px) {
-  .sidebar {
-    width: 200px;
-  }
-  .content {
-    margin-left: 200px;
-    padding: 20px;
-  }
-}
-
-@media (max-width: 768px) {
-  body {
-    flex-direction: column;
-  }
-  .sidebar {
-    width: 100%;
-    height: auto;
-    position: static;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-  }
-  .content {
-    margin-left: 0;
-  }
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-darker);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary);
-}
-</style>
+<style>${MERCURY_THEME}</style>
 </head>
 
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   
   <div class="user-info">
     <p>${req.user.username}</p>
@@ -1865,221 +1935,13 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Presença Plus | Minhas Matérias</title>
+  <title>Mercury Class | Minhas Matérias</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --bg-dark: #0f172a;
-      --bg-darker: #020617;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --bg-darker: #f1f5f9;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body { display: flex; }
-
-    .sidebar {
-      width: 280px;
-      background: var(--bg-darker);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      position: fixed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 12px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .user-info {
-      background: var(--card-dark);
-      padding: 15px;
-      border-radius: 12px;
-      margin-bottom: 20px;
-      border-left: 4px solid var(--primary);
-    }
-
-    .user-info p:last-child {
-      margin-top: 6px;
-      display: inline-block;
-      font-size: 12px;
-      background: var(--primary);
-      color: white;
-      padding: 4px 12px;
-      border-radius: 20px;
-    }
-
-    .nav-menu { list-style: none; }
-    .nav-menu li { margin-bottom: 10px; }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      border-left: 3px solid transparent;
-      transition: all .25s;
-    }
-
-    .nav-menu a:hover,
-    .nav-menu a.active-link {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-
-    .theme-btn {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      color: var(--text-light);
-      padding: 10px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      padding: 22px;
-    }
-
-    .metric h2 {
-      font-size: 34px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .metric p {
-      color: var(--text-muted);
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 340px 1fr;
-      gap: 16px;
-    }
-
-    ul { list-style: none; }
-
-    .subject-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 12px;
-    }
-
-    .subject-card {
-      display: block;
-      padding: 14px;
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-      background: var(--bg-darker);
-      color: var(--text-light);
-      text-decoration: none;
-      transition: all .25s;
-    }
-
-    .subject-card:hover,
-    .subject-card.active {
-      transform: translateY(-2px);
-      border-color: var(--primary);
-      box-shadow: 0 8px 18px rgba(99, 102, 241, 0.15);
-    }
-
-    .subject-title {
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-
-    .subject-count {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 4px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .subject-sub {
-      color: var(--text-muted);
-      font-size: 12px;
-    }
-
-    .history-list li {
-      padding: 12px 0;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .history-list li:last-child { border-bottom: none; }
-
-    @media (max-width: 980px) {
-      .layout { grid-template-columns: 1fr; }
-    }
-
-    @media (max-width: 768px) {
-      body { flex-direction: column; }
-      .sidebar { position: static; width: 100%; height: auto; }
-      .content { margin-left: 0; padding: 20px; }
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
   <div class="sidebar">
-    <h2>✨ Presença Plus</h2>
+    <h2>✨ Mercury Class</h2>
 
     <div class="user-info">
       <p>${req.user.username}</p>
@@ -2169,32 +2031,13 @@ app.get('/guild/:id', async (req, res) => {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Presença Plus | Guild ${guildId}</title>
+  <title>Mercury Class | Guild ${guildId}</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    :root{--primary:#6366f1;--secondary:#8b5cf6;--bg-dark:#0f172a;--bg-darker:#020617;--card-dark:#1e293b;--text-light:#f1f5f9;--text-muted:#94a3b8;--border-color:#334155}
-    .light{--bg-dark:#f8fafc;--bg-darker:#f1f5f9;--card-dark:#fff;--text-light:#1e293b;--text-muted:#64748b;--border-color:#e2e8f0}
-    html,body{font-family:Poppins,sans-serif;background:var(--bg-dark);color:var(--text-light);min-height:100vh}
-    body{display:flex}
-    .sidebar{width:280px;background:var(--bg-darker);border-right:1px solid var(--border-color);padding:30px 20px;position:fixed;height:100vh}
-    .sidebar h2{font-size:24px;margin-bottom:20px;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .nav-menu{list-style:none}.nav-menu li{margin-bottom:10px}
-    .nav-menu a{display:block;padding:12px 16px;color:var(--text-muted);text-decoration:none;border-radius:8px;border-left:3px solid transparent;transition:.25s}
-    .nav-menu a:hover{background:var(--card-dark);color:var(--text-light);border-left-color:var(--primary)}
-    .content{margin-left:280px;flex:1;padding:40px}
-    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
-    .theme-btn{background:var(--card-dark);border:1px solid var(--border-color);color:var(--text-light);padding:10px 14px;border-radius:8px;cursor:pointer}
-    .card{background:var(--card-dark);border:1px solid var(--border-color);border-radius:14px;padding:24px}
-    ul{list-style:none}
-    li{padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;gap:10px}
-    li:last-child{border-bottom:none}
-    @media (max-width:768px){body{flex-direction:column}.sidebar{position:static;width:100%;height:auto}.content{margin-left:0;padding:20px}}
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
   <div class="sidebar">
-    <h2>✨ Presença Plus</h2>
+    <h2>✨ Mercury Class</h2>
     <ul class="nav-menu">
       <li><a href="/dashboard">📊 Dashboard</a></li>
       <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -2318,37 +2161,13 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Presença Plus | Matérias</title>
+  <title>Mercury Class | Matérias</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    :root { --primary:#6366f1; --secondary:#8b5cf6; --bg-dark:#0f172a; --bg-darker:#020617; --card-dark:#1e293b; --text-light:#f1f5f9; --text-muted:#94a3b8; --border-color:#334155; }
-    .light { --bg-dark:#f8fafc; --bg-darker:#f1f5f9; --card-dark:#ffffff; --text-light:#1e293b; --text-muted:#64748b; --border-color:#e2e8f0; }
-    html, body { font-family:'Poppins',sans-serif; background:var(--bg-dark); color:var(--text-light); min-height:100vh; }
-    body { display:flex; }
-    .sidebar { width:280px; background:var(--bg-darker); border-right:1px solid var(--border-color); padding:30px 20px; position:fixed; height:100vh; overflow-y:auto; }
-    .sidebar h2 { font-size:24px; margin-bottom:20px; background:linear-gradient(135deg,var(--primary),var(--secondary)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-    .nav-menu { list-style:none; }
-    .nav-menu li { margin-bottom:10px; }
-    .nav-menu a { display:block; padding:12px 16px; color:var(--text-muted); text-decoration:none; border-radius:8px; border-left:3px solid transparent; transition:all .25s; }
-    .nav-menu a:hover { background:var(--card-dark); color:var(--text-light); border-left-color:var(--primary); }
-    .content { margin-left:280px; flex:1; padding:40px; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-    .theme-btn { background:var(--card-dark); border:1px solid var(--border-color); color:var(--text-light); padding:10px 14px; border-radius:8px; cursor:pointer; }
-    .card { background:var(--card-dark); border:1px solid var(--border-color); border-radius:14px; padding:24px; margin-bottom:18px; }
-    ul { list-style:none; }
-    li { padding:12px 0; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; }
-    li:last-child { border-bottom:none; }
-    form { display:flex; gap:10px; margin-top:12px; }
-    input { flex:1; padding:12px 14px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-darker); color:var(--text-light); }
-    button { padding:12px 16px; border:none; border-radius:8px; background:linear-gradient(135deg,var(--primary),var(--secondary)); color:#fff; font-weight:600; cursor:pointer; }
-    .btn-delete { background: linear-gradient(135deg, #ef4444, #dc2626); }
-    @media (max-width:768px) { body{flex-direction:column;} .sidebar{position:static;width:100%;height:auto;} .content{margin-left:0;padding:20px;} form{flex-direction:column;} }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
   <div class="sidebar">
-    <h2>✨ Presença Plus</h2>
+    <h2>✨ Mercury Class</h2>
     <ul class="nav-menu">
       <li><a href="/dashboard">📊 Dashboard</a></li>
       <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -2806,285 +2625,14 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Sala - ${classData.name}</title>
+  <title>Mercury Class | Sala - ${classData.name}</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --danger: #ef4444;
-      --success: #10b981;
-      --bg-dark: #0f172a;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body {
-      display: flex;
-    }
-
-    .sidebar {
-      width: 280px;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      height: 100vh;
-      position: fixed;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-menu {
-      list-style: none;
-    }
-
-    .nav-menu li {
-      margin-bottom: 10px;
-    }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.3s;
-      border-left: 3px solid transparent;
-    }
-
-    .nav-menu a:hover {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-      max-height: 100vh;
-    }
-
-    .header {
-      margin-bottom: 40px;
-    }
-
-    .header h1 {
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-
-    .header-meta {
-      display: flex;
-      gap: 20px;
-      color: var(--text-muted);
-      font-size: 14px;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-
-    .card h2 {
-      font-size: 20px;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .status-badge.active {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--danger);
-    }
-
-    .status-badge.inactive {
-      background: rgba(100, 116, 139, 0.2);
-      color: var(--text-muted);
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    li {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-dark);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      gap: 12px;
-    }
-
-    li:last-child {
-      border-bottom: none;
-    }
-
-    form {
-      background: var(--bg-dark);
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      display: flex;
-      gap: 12px;
-      align-items: flex-end;
-    }
-
-    form label {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      flex: 1;
-      font-weight: 500;
-      font-size: 14px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    form input {
-      padding: 12px 16px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      color: var(--text-light);
-      border-radius: 8px;
-      font-family: 'Poppins', sans-serif;
-      font-size: 14px;
-    }
-
-    form input:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    button {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 600;
-      font-family: 'Poppins', sans-serif;
-      font-size: 14px;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
-    }
-
-    .btn-danger {
-      background: linear-gradient(135deg, var(--danger), #dc2626);
-    }
-
-    .btn-danger:hover {
-      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      text-decoration: none;
-      color: var(--primary);
-      transition: all 0.3s;
-    }
-
-    .back-link:hover {
-      background: var(--border-color);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px;
-      color: var(--text-muted);
-    }
-
-    @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-      }
-      .content {
-        margin-left: 0;
-        padding: 20px;
-      }
-      form {
-        flex-direction: column;
-      }
-      .header h1 {
-        font-size: 24px;
-      }
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -3422,7 +2970,7 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
 });
 
 app.get('/historico-chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
-  res.send('<'+'!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Presença Plus | Histórico de Chamadas</title><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet"><style>* { margin: 0; padding: 0; box-sizing: border-box; } :root { --primary: #6366f1; --secondary: #8b5cf6; --bg-dark: #0f172a; --card-dark: #1e293b; --text-light: #f1f5f9; --text-muted: #94a3b8; --border-color: #334155; --success: #10b981; --danger: #ef4444; } html, body { font-family: "Poppins", sans-serif; background: var(--bg-dark); color: var(--text-light); min-height: 100vh; } body { display: flex; } .sidebar { width: 280px; background: linear-gradient(180deg, #020617 0%, #0f172a 100%); border-right: 1px solid var(--border-color); padding: 30px 20px; height: 100vh; position: fixed; overflow-y: auto; } .sidebar h2 { font-size: 24px; margin-bottom: 20px; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; } .nav-menu { list-style: none; } .nav-menu li { margin-bottom: 10px; } .nav-menu a { display: block; padding: 12px 16px; color: var(--text-muted); text-decoration: none; border-radius: 8px; transition: all 0.3s; border-left: 3px solid transparent; } .nav-menu a:hover { background: var(--card-dark); color: var(--text-light); border-left-color: var(--primary); } .content { margin-left: 280px; flex: 1; padding: 40px; overflow-y: auto; max-height: 100vh; } .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; } .topbar h1 { font-size: 32px; font-weight: 700; } .card { background: var(--card-dark); border: 1px solid var(--border-color); padding: 24px; border-radius: 14px; margin-bottom: 20px; } .filter-group { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; } label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; } input[type="date"], input[type="text"], select { padding: 12px 16px; background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-light); border-radius: 8px; font-family: "Poppins", sans-serif; font-size: 14px; } input[type="date"]:focus, input[type="text"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); } button { padding: 12px 24px; background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-family: "Poppins", sans-serif; transition: all 0.3s; text-transform: uppercase; letter-spacing: 0.5px; font-size: 14px; } button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3); } button.btn-danger { background: var(--danger); } button.btn-danger:hover { background: #dc2626; } .btn-export-all { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #10b981, #059669); color: white; cursor: pointer; font-weight: 600; transition: all 0.3s; text-transform: uppercase; letter-spacing: 0.5px; font-size: 14px; padding: 12px 24px; border-radius: 8px; } .btn-export-all:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(16, 185, 129, 0.3); } table { width: 100%; border-collapse: collapse; margin-top: 20px; } thead { background: var(--bg-dark); border-bottom: 2px solid var(--border-color); } th { padding: 16px; text-align: left; font-weight: 600; color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; } td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); } tbody tr:hover { background: rgba(99, 102, 241, 0.05); } .action-cell { display: flex; gap: 8px; flex-wrap: wrap; } .action-cell a, .action-cell button { padding: 6px 12px; font-size: 12px; white-space: nowrap; } .result-empty { text-align: center; padding: 40px; color: var(--text-muted); } .loading { text-align: center; padding: 40px; color: var(--text-muted); } .back-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background: var(--card-dark); border: 1px solid var(--border-color); border-radius: 8px; text-decoration: none; color: var(--primary); transition: all 0.3s; } .back-link:hover { background: var(--border-color); } .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); } .modal-content { background: var(--card-dark); margin: 5% auto; padding: 24px; border-radius: 14px; border: 1px solid var(--border-color); width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; } .close { color: var(--text-muted); float: right; font-size: 28px; font-weight: bold; cursor: pointer; } .close:hover { color: var(--text-light); } @media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--border-color); } .content { margin-left: 0; padding: 20px; } .filter-group { flex-direction: column; align-items: stretch; } input[type="date"] { width: 100%; } table { font-size: 12px; } th, td { padding: 8px; } }</style></head><body><div class="sidebar"><h2>✨ Presença Plus</h2><ul class="nav-menu"><li><a href="/dashboard">📊 Dashboard</a></li><li><a href="/classes">🏫 Salas de Aula</a></li><li><a href="/subjects">📚 Matérias</a></li><li><a href="/chamadas">📋 Chamadas</a></li>' + (req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : '') + '<li><a href="/logout">🚪 Sair</a></li></ul></div><div class="content"><div class="topbar"><h1>📚 Histórico de Chamadas</h1></div><div class="card"><h3 style="margin-bottom: 20px;">Filtrar Chamadas</h3><div class="filter-group"><div><label for="filterDate">Data</label><input id="filterDate" type="date" /></div><button onclick="loadHistorico()">🔍 Filtrar</button><button onclick="clearFilters()" style="background: var(--border-color);">✕ Limpar</button><a href="/api/chamadas/historico/exportar-todas" class="btn-export-all">📥 Baixar Todas as Chamadas</a></div></div><div class="card"><div id="historico-container"><div class="loading">Carregando histórico...</div></div></div><a href="/dashboard" class="back-link">← Voltar ao Dashboard</a></div><div id="detailsModal" class="modal"><div class="modal-content"><span class="close" onclick="closeModal()">&times;</span><h2 style="margin-bottom: 20px;">Detalhes da Chamada</h2><div id="modalBody"></div></div></div><script>let currentData = []; async function loadHistorico() { const container = document.getElementById("historico-container"); container.innerHTML = "<div class=\"loading\">Carregando histórico...</div>"; try { const resp = await fetch("/api/chamadas/historico"); if (!resp.ok) throw new Error("Falha ao carregar"); const data = await resp.json(); currentData = data; renderTable(data); } catch (err) { console.error("Erro:", err); container.innerHTML = "<div class=\"result-empty\"><p>❌ Erro ao carregar histórico</p></div>"; } } function renderTable(data) { const container = document.getElementById("historico-container"); if (!data || !data.length) { container.innerHTML = "<div class=\"result-empty\"><p>📭 Nenhuma chamada encontrada.</p></div>"; return; } let html = "<table><thead><tr><th>Sala</th><th>Data</th><th>Horário</th><th>Presentes</th><th>Ações</th></tr></thead><tbody>"; html += data.map(call => { const date = new Date(call.session_date).toLocaleDateString("pt-BR"); const time = new Date(call.session_start_time).toLocaleTimeString("pt-BR"); const count = call.total_present + "/" + call.total_students; return "<tr><td><strong>" + call.class_name + "</strong></td><td>" + date + "</td><td>" + time + "</td><td>" + count + "</td><td><div class=\"action-cell\"><button onclick=\"showDetails(" + call.id + ")\" style=\"padding: 6px 12px; font-size: 12px;\">📋 Ver</button><a href=\"/api/chamadas/historico/" + call.id + "/exportar?format=xlsx\" style=\"padding: 6px 12px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 4px; text-decoration: none;\">📥 Excel</a><button onclick=\"deleteCall(" + call.id + ")\" class=\"btn-danger\" style=\"padding: 6px 12px; font-size: 12px;\">🗑️ Excluir</button></div></td></tr>"; }).join(""); html += "</tbody></table>"; container.innerHTML = html; } async function showDetails(callId) { try { const resp = await fetch("/api/chamadas/historico/" + callId + "/detalhes"); if (!resp.ok) throw new Error("Falha ao carregar detalhes"); const data = await resp.json(); const call = data.call; const records = data.records; const modal = document.getElementById("detailsModal"); const modalBody = document.getElementById("modalBody"); let html = "<div><p><strong>Sala:</strong> " + call.class_name + "</p><p><strong>Data:</strong> " + new Date(call.session_date).toLocaleDateString("pt-BR") + "</p><p><strong>Horário:</strong> " + new Date(call.session_start_time).toLocaleTimeString("pt-BR") + "</p><p><strong>Presentes:</strong> " + call.total_present + " / " + call.total_students + "</p><hr style=\"border: none; border-top: 1px solid var(--border-color); margin: 20px 0;\"><h4 style=\"margin-bottom: 12px;\">Alunos Presentes:</h4><table style=\"width: 100%; font-size: 13px;\"><thead><tr style=\"border-bottom: 2px solid var(--border-color);\"><th style=\"text-align: left; padding: 8px;\">Nome</th><th style=\"text-align: left; padding: 8px;\">Horário</th></tr></thead><tbody>"; if (records && records.length) { html += records.map(r => "<tr style=\"border-bottom: 1px solid var(--border-color);\"><td style=\"padding: 8px;\">" + r.student_name + "</td><td style=\"padding: 8px;\">" + new Date(r.attendance_time).toLocaleTimeString("pt-BR") + "</td></tr>").join(""); } else { html += "<tr><td colspan=\"2\" style=\"padding: 8px; text-align: center; color: var(--text-muted);\">Sem registros</td></tr>"; } html += "</tbody></table></div>"; modalBody.innerHTML = html; modal.style.display = "block"; } catch (err) { console.error("Erro:", err); alert("Erro ao carregar detalhes"); } } async function deleteCall(callId) { if (!confirm("Deseja realmente excluir este histórico de chamada?")) return; try { const resp = await fetch("/api/chamadas/historico/" + callId, { method: "DELETE" }); if (resp.ok) { alert("Chamada excluída com sucesso"); loadHistorico(); } else { alert("Erro ao excluir chamada"); } } catch (err) { console.error("Erro:", err); alert("Erro ao excluir chamada"); } } function closeModal() { document.getElementById("detailsModal").style.display = "none"; } function clearFilters() { document.getElementById("filterDate").value = ""; loadHistorico(); } window.addEventListener("click", (e) => { const modal = document.getElementById("detailsModal"); if (e.target === modal) modal.style.display = "none"; }); window.addEventListener("DOMContentLoaded", loadHistorico);</script></body></html>');
+  res.send('<'+'!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Mercury Class | Histórico de Chamadas</title><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet"><style>${MERCURY_THEME}</style></head><body><div class="sidebar"><h2>✨ Mercury Class</h2><ul class="nav-menu"><li><a href="/dashboard">📊 Dashboard</a></li><li><a href="/classes">🏫 Salas de Aula</a></li><li><a href="/subjects">📚 Matérias</a></li><li><a href="/chamadas">📋 Chamadas</a></li>' + (req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : '') + '<li><a href="/logout">🚪 Sair</a></li></ul></div><div class="content"><div class="topbar"><h1>📚 Histórico de Chamadas</h1></div><div class="card"><h3 style="margin-bottom: 20px;">Filtrar Chamadas</h3><div class="filter-group"><div><label for="filterDate">Data</label><input id="filterDate" type="date" /></div><button onclick="loadHistorico()">🔍 Filtrar</button><button onclick="clearFilters()" style="background: var(--border-color);">✕ Limpar</button><a href="/api/chamadas/historico/exportar-todas" class="btn-export-all">📥 Baixar Todas as Chamadas</a></div></div><div class="card"><div id="historico-container"><div class="loading">Carregando histórico...</div></div></div><a href="/dashboard" class="back-link">← Voltar ao Dashboard</a></div><div id="detailsModal" class="modal"><div class="modal-content"><span class="close" onclick="closeModal()">&times;</span><h2 style="margin-bottom: 20px;">Detalhes da Chamada</h2><div id="modalBody"></div></div></div><script>let currentData = []; async function loadHistorico() { const container = document.getElementById("historico-container"); container.innerHTML = "<div class=\"loading\">Carregando histórico...</div>"; try { const resp = await fetch("/api/chamadas/historico"); if (!resp.ok) throw new Error("Falha ao carregar"); const data = await resp.json(); currentData = data; renderTable(data); } catch (err) { console.error("Erro:", err); container.innerHTML = "<div class=\"result-empty\"><p>❌ Erro ao carregar histórico</p></div>"; } } function renderTable(data) { const container = document.getElementById("historico-container"); if (!data || !data.length) { container.innerHTML = "<div class=\"result-empty\"><p>📭 Nenhuma chamada encontrada.</p></div>"; return; } let html = "<table><thead><tr><th>Sala</th><th>Data</th><th>Horário</th><th>Presentes</th><th>Ações</th></tr></thead><tbody>"; html += data.map(call => { const date = new Date(call.session_date).toLocaleDateString("pt-BR"); const time = new Date(call.session_start_time).toLocaleTimeString("pt-BR"); const count = call.total_present + "/" + call.total_students; return "<tr><td><strong>" + call.class_name + "</strong></td><td>" + date + "</td><td>" + time + "</td><td>" + count + "</td><td><div class=\"action-cell\"><button onclick=\"showDetails(" + call.id + ")\" style=\"padding: 6px 12px; font-size: 12px;\">📋 Ver</button><a href=\"/api/chamadas/historico/" + call.id + "/exportar?format=xlsx\" style=\"padding: 6px 12px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 4px; text-decoration: none;\">📥 Excel</a><button onclick=\"deleteCall(" + call.id + ")\" class=\"btn-danger\" style=\"padding: 6px 12px; font-size: 12px;\">🗑️ Excluir</button></div></td></tr>"; }).join(""); html += "</tbody></table>"; container.innerHTML = html; } async function showDetails(callId) { try { const resp = await fetch("/api/chamadas/historico/" + callId + "/detalhes"); if (!resp.ok) throw new Error("Falha ao carregar detalhes"); const data = await resp.json(); const call = data.call; const records = data.records; const modal = document.getElementById("detailsModal"); const modalBody = document.getElementById("modalBody"); let html = "<div><p><strong>Sala:</strong> " + call.class_name + "</p><p><strong>Data:</strong> " + new Date(call.session_date).toLocaleDateString("pt-BR") + "</p><p><strong>Horário:</strong> " + new Date(call.session_start_time).toLocaleTimeString("pt-BR") + "</p><p><strong>Presentes:</strong> " + call.total_present + " / " + call.total_students + "</p><hr style=\"border: none; border-top: 1px solid var(--border-color); margin: 20px 0;\"><h4 style=\"margin-bottom: 12px;\">Alunos Presentes:</h4><table style=\"width: 100%; font-size: 13px;\"><thead><tr style=\"border-bottom: 2px solid var(--border-color);\"><th style=\"text-align: left; padding: 8px;\">Nome</th><th style=\"text-align: left; padding: 8px;\">Horário</th></tr></thead><tbody>"; if (records && records.length) { html += records.map(r => "<tr style=\"border-bottom: 1px solid var(--border-color);\"><td style=\"padding: 8px;\">" + r.student_name + "</td><td style=\"padding: 8px;\">" + new Date(r.attendance_time).toLocaleTimeString("pt-BR") + "</td></tr>").join(""); } else { html += "<tr><td colspan=\"2\" style=\"padding: 8px; text-align: center; color: var(--text-muted);\">Sem registros</td></tr>"; } html += "</tbody></table></div>"; modalBody.innerHTML = html; modal.style.display = "block"; } catch (err) { console.error("Erro:", err); alert("Erro ao carregar detalhes"); } } async function deleteCall(callId) { if (!confirm("Deseja realmente excluir este histórico de chamada?")) return; try { const resp = await fetch("/api/chamadas/historico/" + callId, { method: "DELETE" }); if (resp.ok) { alert("Chamada excluída com sucesso"); loadHistorico(); } else { alert("Erro ao excluir chamada"); } } catch (err) { console.error("Erro:", err); alert("Erro ao excluir chamada"); } } function closeModal() { document.getElementById("detailsModal").style.display = "none"; } function clearFilters() { document.getElementById("filterDate").value = ""; loadHistorico(); } window.addEventListener("click", (e) => { const modal = document.getElementById("detailsModal"); if (e.target === modal) modal.style.display = "none"; }); window.addEventListener("DOMContentLoaded", loadHistorico);</script></body></html>');
 });
 
 app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
@@ -3432,279 +2980,14 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Chamadas</title>
+  <title>Mercury Class | Chamadas</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --bg-dark: #0f172a;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-      --success: #10b981;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body {
-      display: flex;
-    }
-
-    .sidebar {
-      width: 280px;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      height: 100vh;
-      position: fixed;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-menu {
-      list-style: none;
-    }
-
-    .nav-menu li {
-      margin-bottom: 10px;
-    }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.3s;
-      border-left: 3px solid transparent;
-    }
-
-    .nav-menu a:hover {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-      max-height: 100vh;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 40px;
-    }
-
-    .topbar h1 {
-      font-size: 32px;
-      font-weight: 700;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-
-    .form-group {
-      display: flex;
-      gap: 12px;
-      align-items: flex-end;
-      margin-bottom: 20px;
-    }
-
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 8px;
-      font-size: 14px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    input[type="date"] {
-      padding: 12px 16px;
-      background: var(--bg-dark);
-      border: 1px solid var(--border-color);
-      color: var(--text-light);
-      border-radius: 8px;
-      font-family: 'Poppins', sans-serif;
-      font-size: 14px;
-      flex: 1;
-      max-width: 250px;
-    }
-
-    input[type="date"]:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    button {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 600;
-      font-family: 'Poppins', sans-serif;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-size: 14px;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    li {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      background: var(--bg-dark);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    li:last-child {
-      border-bottom: none;
-    }
-
-    a {
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.3s;
-    }
-
-    a:hover {
-      color: var(--secondary);
-    }
-
-    .result-empty {
-      text-align: center;
-      padding: 40px;
-      color: var(--text-muted);
-    }
-
-    .result-empty p {
-      margin: 0;
-      font-size: 16px;
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      text-decoration: none;
-      color: var(--primary);
-      transition: all 0.3s;
-    }
-
-    .back-link:hover {
-      background: var(--border-color);
-    }
-
-    @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-      }
-      .content {
-        margin-left: 0;
-        padding: 20px;
-      }
-      .form-group {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      input[type="date"] {
-        max-width: 100%;
-      }
-    }
-    .btn-export-all {
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: white;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-size: 14px;
-      padding: 12px 24px;
-      border-radius: 8px;
-    }
-    .btn-export-all:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(16, 185, 129, 0.3);
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -4172,301 +3455,14 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Salas de Aula</title>
+  <title>Mercury Class | Salas de Aula</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --danger: #ef4444;
-      --bg-dark: #0f172a;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-      --success: #10b981;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body {
-      display: flex;
-    }
-
-    .sidebar {
-      width: 280px;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      height: 100vh;
-      position: fixed;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-menu {
-      list-style: none;
-    }
-
-    .nav-menu li {
-      margin-bottom: 10px;
-    }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.3s;
-      border-left: 3px solid transparent;
-    }
-
-    .nav-menu a:hover {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-      max-height: 100vh;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 40px;
-    }
-
-    .topbar h1 {
-      font-size: 32px;
-      font-weight: 700;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-
-    .card h2 {
-      font-size: 20px;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    form {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 0;
-    }
-
-    form input,
-    form select {
-      flex: 1;
-      padding: 12px 16px;
-      background: var(--bg-dark);
-      border: 1px solid var(--border-color);
-      color: var(--text-light);
-      border-radius: 8px;
-      font-family: 'Poppins', sans-serif;
-    }
-
-    form select {
-      min-width: 210px;
-      cursor: pointer;
-      transition: all 0.25s ease;
-      appearance: none;
-      -webkit-appearance: none;
-      -moz-appearance: none;
-      background-image:
-        linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-        linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-      background-position:
-        calc(100% - 18px) calc(50% - 3px),
-        calc(100% - 12px) calc(50% - 3px);
-      background-size: 6px 6px, 6px 6px;
-      background-repeat: no-repeat;
-      padding-right: 34px;
-    }
-
-    form select:hover {
-      border-color: var(--primary);
-      background-color: rgba(99, 102, 241, 0.08);
-    }
-
-    form input:focus,
-    form select:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    form select option {
-      background: var(--card-dark);
-      color: var(--text-light);
-    }
-
-    button, .btn-danger {
-      padding: 12px 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 600;
-      font-family: 'Poppins', sans-serif;
-      transition: all 0.3s;
-      font-size: 14px;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
-    }
-
-    .btn-danger {
-      background: linear-gradient(135deg, var(--danger), #dc2626);
-    }
-
-    .btn-danger:hover {
-      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    li {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-dark);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      gap: 12px;
-    }
-
-    li:last-child {
-      border-bottom: none;
-    }
-
-    a {
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.3s;
-    }
-
-    a:hover {
-      color: var(--secondary);
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .badge-active {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--danger);
-    }
-
-    .badge-inactive {
-      background: rgba(148, 163, 184, 0.2);
-      color: var(--text-muted);
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      text-decoration: none;
-      color: var(--primary);
-      transition: all 0.3s;
-    }
-
-    .back-link:hover {
-      background: var(--border-color);
-    }
-
-    @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-      }
-      .content {
-        margin-left: 0;
-        padding: 20px;
-      }
-      form {
-        flex-direction: column;
-      }
-      li {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      li > div:last-child {
-        width: 100%;
-        display: flex;
-        gap: 8px;
-      }
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -4532,185 +3528,14 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Salas Disponíveis</title>
+  <title>Mercury Class | Salas Disponíveis</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --bg-dark: #0f172a;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body {
-      display: flex;
-    }
-
-    .sidebar {
-      width: 280px;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      height: 100vh;
-      position: fixed;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-menu {
-      list-style: none;
-    }
-
-    .nav-menu li {
-      margin-bottom: 10px;
-    }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.3s;
-      border-left: 3px solid transparent;
-    }
-
-    .nav-menu a:hover {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-      max-height: 100vh;
-    }
-
-    .topbar {
-      margin-bottom: 40px;
-    }
-
-    .topbar h1 {
-      font-size: 32px;
-      font-weight: 700;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-
-    .card h2 {
-      font-size: 20px;
-      margin-bottom: 20px;
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    li {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-dark);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      gap: 12px;
-    }
-
-    li:last-child {
-      border-bottom: none;
-    }
-
-    a {
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.3s;
-    }
-
-    a:hover {
-      color: var(--secondary);
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      text-decoration: none;
-      color: var(--primary);
-      transition: all 0.3s;
-    }
-
-    .back-link:hover {
-      background: var(--border-color);
-    }
-
-    @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-      }
-      .content {
-        margin-left: 0;
-        padding: 20px;
-      }
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -4837,264 +3662,14 @@ app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) =
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presença Plus | Admin</title>
+  <title>Mercury Class | Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --primary: #6366f1;
-      --secondary: #8b5cf6;
-      --danger: #ef4444;
-      --bg-dark: #0f172a;
-      --card-dark: #1e293b;
-      --text-light: #f1f5f9;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-    }
-
-    .light {
-      --bg-dark: #f8fafc;
-      --card-dark: #ffffff;
-      --text-light: #1e293b;
-      --text-muted: #64748b;
-      --border-color: #e2e8f0;
-    }
-
-    html, body {
-      font-family: 'Poppins', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-light);
-      min-height: 100vh;
-    }
-
-    body {
-      display: flex;
-    }
-
-    .sidebar {
-      width: 280px;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      border-right: 1px solid var(--border-color);
-      padding: 30px 20px;
-      height: 100vh;
-      position: fixed;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-menu {
-      list-style: none;
-    }
-
-    .nav-menu li {
-      margin-bottom: 10px;
-    }
-
-    .nav-menu a {
-      display: block;
-      padding: 12px 16px;
-      color: var(--text-muted);
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.3s;
-      border-left: 3px solid transparent;
-    }
-
-    .nav-menu a:hover {
-      background: var(--card-dark);
-      color: var(--text-light);
-      border-left-color: var(--primary);
-    }
-
-    .content {
-      margin-left: 280px;
-      flex: 1;
-      padding: 40px;
-      overflow-y: auto;
-      max-height: 100vh;
-    }
-
-    .topbar {
-      margin-bottom: 40px;
-    }
-
-    .topbar h1 {
-      font-size: 32px;
-      font-weight: 700;
-    }
-
-    .topbar p {
-      color: var(--text-muted);
-      margin-top: 8px;
-    }
-
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-      margin-bottom: 40px;
-    }
-
-    .metric-card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      text-align: center;
-    }
-
-    .metric-card h3 {
-      font-size: 36px;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-
-    .metric-card p {
-      color: var(--text-muted);
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .card {
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      padding: 24px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-
-    .card h2 {
-      font-size: 20px;
-      margin-bottom: 20px;
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    li {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-dark);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      gap: 12px;
-    }
-
-    li:last-child {
-      border-bottom: none;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .status-badge.active {
-      background: rgba(16, 185, 129, 0.2);
-      color: #10b981;
-    }
-
-    .status-badge.inactive {
-      background: rgba(100, 116, 139, 0.2);
-      color: var(--text-muted);
-    }
-
-    button, .btn-delete {
-      padding: 8px 14px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 600;
-      font-family: 'Poppins', sans-serif;
-      font-size: 12px;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(99, 102, 241, 0.3);
-    }
-
-    .btn-delete {
-      background: linear-gradient(135deg, var(--danger), #dc2626);
-      padding: 8px 12px;
-    }
-
-    .btn-delete:hover {
-      box-shadow: 0 5px 20px rgba(239, 68, 68, 0.3);
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: var(--card-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      text-decoration: none;
-      color: var(--primary);
-      transition: all 0.3s;
-    }
-
-    .back-link:hover {
-      background: var(--border-color);
-    }
-
-    @media (max-width: 768px) {
-      body {
-        flex-direction: column;
-      }
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-      }
-      .content {
-        margin-left: 0;
-        padding: 20px;
-      }
-      li {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-    }
-  </style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>✨ Presença Plus</h2>
+  <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
     <li><a href="/dashboard">📊 Dashboard</a></li>

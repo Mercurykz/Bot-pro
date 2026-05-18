@@ -88,7 +88,7 @@ updated_at TIMESTAMPTZ DEFAULT NOW()
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  ✨ Presença Plus          [Menu]               │
+│  ✨ Mercury Class          [Menu]               │
 ├─────────────────────────────────────────────────┤
 │                                                  │
 │  📚 Histórico de Chamadas                        │

@@ -132,7 +132,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setTitle('📋 Sistema de Chamada')
       .setDescription('Clique no botão abaixo para entrar no sistema atual de chamadas.')
       .setColor('#5865F2')
-      .setFooter({ text: 'Presença Plus' })
+      .setFooter({ text: 'Mercury Class' })
       .setTimestamp();
 
     return interaction.reply({
