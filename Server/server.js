@@ -3394,7 +3394,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <h1>🏫 Salas de Aula</h1>
   </div>
 
-  ${req.user.role === 'professor' ? `<div class="card">
+  ${(req.user.role === 'professor' || req.user.role === 'admin') ? `<div class="card">
     <h2>➕ Criar Nova Sala</h2>
     <form method="POST" action="/class/start">
       <input name="name" required placeholder="Nome da sala" />
