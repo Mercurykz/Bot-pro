@@ -3678,6 +3678,27 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         max-width: 100%;
       }
     }
+    .btn-export-all {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 14px;
+      padding: 12px 24px;
+      border-radius: 8px;
+    }
+    .btn-export-all:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(16, 185, 129, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -3706,6 +3727,7 @@ app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
         <input id="date" type="date" />
       </div>
       <button id="load">Carregar</button>
+      <a href="/api/chamadas/exportar-todas" class="btn-export-all">📥 Baixar Todas as Chamadas</a>
     </div>
     <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 13px;">Carregue as chamadas já existentes para visualizar e baixar.</p>
     <div id="result"></div>
@@ -5259,30 +5281,104 @@ app.get('/api/chamadas/historico', ensureAuthenticated, ensureProfessor, async (
   }
 });
 
-// GET: Exportar todas as chamadas em um ZIP contendo Excels organizados por matéria/classe
-app.get('/api/chamadas/historico/exportar-todas', ensureAuthenticated, ensureProfessor, async (req, res) => {
+// GET: Exportar todas as chamadas em um ZIP contendo Excels das sessões reais do professor/admin
+app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).send('Erro: DB não conectado');
   
   try {
+    const schema = await getAttendanceSchema();
     const professorId = req.user.id;
     const isAdmin = req.user.role === 'admin';
     
-    // 1. Buscar todas as chamadas do professor (ou todas se for admin)
-    const callQuery = isAdmin
-      ? `SELECT ch.*, c.name as class_name 
-         FROM call_history ch 
-         JOIN classes c ON c.id = ch.class_id 
-         ORDER BY c.name ASC, ch.session_date DESC`
-      : `SELECT ch.*, c.name as class_name 
-         FROM call_history ch 
-         JOIN classes c ON c.id = ch.class_id 
-         WHERE ch.professor_id = $1 
-         ORDER BY c.name ASC, ch.session_date DESC`;
-         
-    const params = isAdmin ? [] : [professorId];
-    const callResult = await db.query(callQuery, params);
+    let sessions;
+    if (schema.hasClassId) {
+      sessions = isAdmin
+        ? await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC`
+          )
+        : await db.query(
+            `
+            SELECT * FROM (
+              SELECT
+                s.id::text AS session_id,
+                c.id AS class_id,
+                c.name,
+                s.active,
+                s.start_time,
+                s.end_time,
+                false AS is_legacy
+              FROM class_sessions s
+              JOIN classes c ON c.id = s.class_id
+              WHERE c.professor_id = $1
+
+              UNION ALL
+
+              SELECT
+                ('legacy-' || c.id::text || '-' || TO_CHAR(DATE(a.login_at), 'YYYY-MM-DD')) AS session_id,
+                c.id AS class_id,
+                c.name,
+                false AS active,
+                DATE(a.login_at)::timestamptz AS start_time,
+                NULL::timestamptz AS end_time,
+                true AS is_legacy
+              FROM attendances a
+              JOIN classes c ON c.id = a.class_id
+              WHERE a.class_id IS NOT NULL
+                AND a.class_session_id IS NULL
+                AND c.professor_id = $1
+              GROUP BY c.id, c.name, DATE(a.login_at)
+            ) x
+            ORDER BY x.start_time DESC`,
+            [professorId]
+          );
+    } else {
+      sessions = isAdmin
+        ? await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             ORDER BY s.start_time DESC`
+          )
+        : await db.query(
+            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+             FROM class_sessions s
+             JOIN classes c ON c.id = s.class_id
+             WHERE c.professor_id = $1
+             ORDER BY s.start_time DESC`,
+            [professorId]
+          );
+    }
     
-    if (!callResult.rowCount) {
+    if (!sessions.rowCount) {
       return res.status(404).send('Nenhuma chamada encontrada para exportar.');
     }
     
@@ -5293,50 +5389,73 @@ app.get('/api/chamadas/historico/exportar-todas', ensureAuthenticated, ensurePro
       return (name || '').replace(/[\/\\?%*:|"<>]/g, '_').trim();
     }
     
-    // 2. Para cada chamada, buscar as presenças e gerar a planilha
-    for (const call of callResult.rows) {
-      const recordsResult = await db.query(`
-        SELECT 
-          ar.student_name,
-          ar.student_id,
-          ar.attendance_time,
-          ar.attendance_date
-        FROM attendance_records ar
-        WHERE ar.session_id = $1
-        ORDER BY ar.attendance_time ASC
-      `, [call.session_id]);
+    // Para cada sessão, obter presenças e colocar no ZIP
+    for (const session of sessions.rows) {
+      const sessionId = session.session_id;
+      const legacyMatch = /^legacy-(\d+)-(\d{4}-\d{2}-\d{2})$/.exec(sessionId);
+      let exportQuery;
+      let exportFileDate = session.start_time ? new Date(session.start_time).toISOString().split('T')[0] : 'sem-data';
       
-      const rows = recordsResult.rows;
+      if (legacyMatch) {
+        const legacyClassId = parseInt(legacyMatch[1], 10);
+        const legacyDate = legacyMatch[2];
+        exportFileDate = legacyDate;
+        exportQuery = {
+          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+                FROM attendances a
+                LEFT JOIN users u ON a.student_id = u.id
+                WHERE a.class_id = $1
+                  AND DATE(a.login_at) = $2::date
+                ORDER BY a.login_at ASC`,
+          params: [legacyClassId, legacyDate]
+        };
+      } else {
+        exportQuery = schema.hasClassSessionId
+          ? {
+              sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+                    FROM attendances a
+                    LEFT JOIN users u ON a.student_id = u.id
+                    WHERE a.class_session_id = $1
+                       OR (a.class_session_id IS NULL AND a.class_id = $2 AND DATE(a.login_at) = DATE($3::timestamptz))
+                    ORDER BY a.login_at ASC`,
+              params: [sessionId, session.class_id, session.start_time]
+            }
+          : {
+              sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+                    FROM attendances a
+                    LEFT JOIN users u ON a.student_id = u.id
+                    WHERE a.class_id = $1
+                    ORDER BY a.login_at ASC`,
+              params: [session.class_id]
+            };
+      }
+      
+      const attendancesResult = await db.query(exportQuery.sql, exportQuery.params);
+      const rows = attendancesResult.rows;
       
       const sheetData = rows.map(r => ({
         Nome: r.student_name,
-        ID: r.student_id || '',
-        'Data': new Date(r.attendance_date).toLocaleDateString('pt-BR'),
-        'Horário': new Date(r.attendance_time).toLocaleTimeString('pt-BR')
+        Discord: r.discord_username || '',
+        'Data/Hora': new Date(r.login_at).toLocaleString('pt-BR')
       }));
       
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(sheetData);
-      worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamada');
+      worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }];
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamadas');
       
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
       
-      // Sanitizar nomes para evitar problemas com pastas/arquivos no ZIP
-      const folderName = sanitizePathPart(call.class_name);
-      // Formatar data no padrão YYYY-MM-DD
-      const formattedDate = new Date(call.session_date).toISOString().split('T')[0];
-      const fileName = `chamada-${sanitizePathPart(call.session_name || 'chamada')}-${formattedDate}.xlsx`;
+      const folderName = sanitizePathPart(session.name);
+      const fileName = `chamada-${sanitizePathPart(session.name)}-${exportFileDate}.xlsx`;
       
-      // Adicionar ao ZIP dentro da pasta da matéria
       zip.file(`${folderName}/${fileName}`, buffer);
     }
     
-    // 3. Gerar o buffer do ZIP
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
     
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="historico-chamadas-completo.zip"');
+    res.setHeader('Content-Disposition', 'attachment; filename="historico-chamadas-sessoes.zip"');
     res.send(zipBuffer);
     
   } catch (err) {
