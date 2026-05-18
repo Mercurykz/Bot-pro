@@ -2571,12 +2571,12 @@ app.get('/clean-ygor-test', async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
     const res1 = await db.query(
-      "DELETE FROM presencas WHERE LOWER(username) IN ('mercurykz.', 'mercury');"
+      "DELETE FROM presencas WHERE data::date = CURRENT_DATE;"
     );
     const res2 = await db.query(
-      "DELETE FROM attendances WHERE LOWER(student_name) LIKE '%ygor belarmino%';"
+      "DELETE FROM attendances WHERE login_at::date = CURRENT_DATE;"
     );
-    res.send(`Limpeza realizada com sucesso! Presenças deletadas: ${res1.rowCount} no Discord, ${res2.rowCount} nas aulas.`);
+    res.send(`Limpeza realizada com sucesso! Presenças de hoje deletadas: ${res1.rowCount} no Discord, ${res2.rowCount} nas aulas.`);
   } catch (err) {
     res.status(500).send('Erro: ' + err.message);
   }
