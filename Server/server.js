@@ -499,6 +499,23 @@ app.use(express.json());
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+
+    // Auto-corretor de banco de dados para garantir UNIQUE constraint e evitar erro no bot
+    try {
+      await db.query(`
+        DELETE FROM discord_mappings a USING discord_mappings b
+        WHERE a.id < b.id AND a.discord_username = b.discord_username;
+      `);
+      await db.query(`
+        ALTER TABLE discord_mappings 
+        ADD CONSTRAINT discord_mappings_discord_username_key UNIQUE (discord_username);
+      `);
+      console.log('  ✓ discord_mappings UNIQUE constraint enforced');
+    } catch (dbErr) {
+      if (!dbErr.message.includes('already exists') && !dbErr.message.includes('duplicada')) {
+        console.warn('  ⚠️ Falha ao aplicar unique constraint em discord_mappings:', dbErr.message);
+      }
+    }
     console.log('  ✓ discord_mappings OK');
 
     // Seed default mapping for Ygor (Mercury -> Ygor Belarmino da silva)
