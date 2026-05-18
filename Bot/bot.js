@@ -178,7 +178,48 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // 💾 salva presença
+      // 💾 busca mapeamento para nome real
+      const mappingRes = await db.query(
+        `SELECT real_name FROM discord_mappings WHERE discord_username = $1`,
+        [username]
+      );
+
+      let mappedName = username;
+      let activeSessionMsg = '';
+
+      if (mappingRes.rowCount > 0) {
+        mappedName = mappingRes.rows[0].real_name;
+        
+        // Verifica se existe sessão de aula ativa no momento
+        try {
+          const activeSession = await db.query(
+            `SELECT id, class_id FROM class_sessions WHERE active = true ORDER BY start_time DESC LIMIT 1`
+          );
+          if (activeSession.rowCount > 0) {
+            const sessionId = activeSession.rows[0].id;
+            const classId = activeSession.rows[0].class_id;
+            
+            // Verifica se o aluno já tem presença nesta sessão
+            const checkAtt = await db.query(
+              `SELECT 1 FROM attendances WHERE class_session_id = $1 AND student_name = $2`,
+              [sessionId, mappedName]
+            );
+            if (checkAtt.rowCount === 0) {
+              await db.query(
+                `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
+                [sessionId, classId, mappedName]
+              );
+              activeSessionMsg = `\n📖 **Chamada Escolar:** Registrado como **${mappedName}** na aula ativa!`;
+            } else {
+              activeSessionMsg = `\n📖 **Chamada Escolar:** Você já tem presença registrada nesta aula ativa.`;
+            }
+          }
+        } catch (sessErr) {
+          console.error('Erro ao registrar presença em chamada ativa via Discord:', sessErr);
+        }
+      }
+
+      // 💾 salva presença geral na tabela Discord
       await db.query(
         `INSERT INTO presencas (user_id, username, guild_id, data)
          VALUES ($1, $2, $3, NOW())`,
@@ -198,7 +239,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // 🎨 embed bonito
       const embed = new EmbedBuilder()
         .setTitle('✅ Presença Registrada')
-        .setDescription(`Bem-vindo, **${username}**!`)
+        .setDescription(`Bem-vindo, **${mappedName}**!${activeSessionMsg}`)
         .addFields(
           { name: '📅 Hoje', value: 'Presença confirmada', inline: true },
           { name: '📊 Total', value: String(totalPresencas), inline: true }

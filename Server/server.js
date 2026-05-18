@@ -491,6 +491,24 @@ app.use(express.json());
     console.log('  ✓ índices institucionais OK');
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS discord_mappings (
+        id SERIAL PRIMARY KEY,
+        discord_username TEXT NOT NULL UNIQUE,
+        real_name TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log('  ✓ discord_mappings OK');
+
+    // Seed default mapping for Ygor (Mercury -> Ygor Belarmino da silva)
+    await db.query(`
+      INSERT INTO discord_mappings (discord_username, real_name)
+      VALUES ('Mercury', 'Ygor Belarmino da silva')
+      ON CONFLICT (discord_username) DO NOTHING
+    `);
+
+    await db.query(`
       INSERT INTO role_permissions (role, resource, action)
       VALUES
         ('admin', '*', '*'),
@@ -1153,6 +1171,7 @@ if (ctx) {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout" class="logout">🚪 Sair</a></li>
   </ul>
@@ -1476,6 +1495,7 @@ app.get('/guild/:id', async (req, res) => {
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
     </ul>
@@ -1606,6 +1626,7 @@ app.get('/subjects', ensureAuthenticated, async (req, res) => {
       ${req.user.role === 'aluno' ? '<li><a href="/minhas-materias">📚 Minhas Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
       ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
       ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
       <li><a href="/logout">🚪 Sair</a></li>
     </ul>
@@ -2070,6 +2091,7 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -2402,6 +2424,132 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   }
 });
 
+app.get('/discord-mappings', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    const mappingsRes = await db.query('SELECT * FROM discord_mappings ORDER BY real_name ASC');
+    const mappingsList = mappingsRes.rows.map(m => `
+      <tr>
+        <td><span class="presence-badge" style="background: rgba(88, 101, 242, 0.15); color: #5865f2; border: 1px solid rgba(88, 101, 242, 0.3); font-size: 13px; padding: 4px 10px; border-radius: 6px;">@${m.discord_username}</span></td>
+        <td><strong>${m.real_name}</strong></td>
+        <td>
+          <form method="POST" action="/discord-mappings/delete/${m.id}" style="display:inline; margin:0;">
+            <button type="submit" class="btn-danger" style="padding: 6px 12px; font-size: 12px;" onclick="return confirm('Excluir este vínculo?');">🗑️ Excluir</button>
+          </form>
+        </td>
+      </tr>
+    `).join('');
+
+    let tableHtml = '<div class="empty-state"><p>Nenhum vínculo configurado ainda.</p></div>';
+    if (mappingsRes.rowCount > 0) {
+      tableHtml = `
+    <table>
+      <thead>
+        <tr>
+          <th>Discord Username</th>
+          <th>Nome na Chamada</th>
+          <th style="width: 100px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${mappingsList}
+      </tbody>
+    </table>`;
+    }
+
+    res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercury Class | Mapeamento Discord</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>\${MERCURY_THEME}</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Mercury Class</h2>
+  <ul class="nav-menu">
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
+    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
+    \${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <div>
+      <h1>👾 Vínculo de Alunos (Discord)</h1>
+      <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Associe o usuário do Discord dos alunos ao nome oficial de chamada.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom: 16px;">➕ Novo Vínculo</h2>
+    <form method="POST" action="/discord-mappings/add" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
+      <div style="flex: 1; min-width: 200px;">
+        <label for="discord_username">Usuário do Discord (sem o @)</label>
+        <input id="discord_username" name="discord_username" required placeholder="Ex: Mercury" style="margin-top: 6px;" />
+      </div>
+      <div style="flex: 1; min-width: 250px;">
+        <label for="real_name">Nome Completo na Chamada</label>
+        <input id="real_name" name="real_name" required placeholder="Ex: Ygor Belarmino da silva" style="margin-top: 6px;" />
+      </div>
+      <button type="submit" class="btn" style="padding: 10px 24px; height: 42px; background: linear-gradient(135deg, var(--primary), var(--secondary));">➕ Criar Vínculo</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom: 16px;">📋 Vínculos Ativos</h2>
+    \${tableHtml}
+  </div>
+</div>
+
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar vínculos do Discord');
+  }
+});
+
+app.post('/discord-mappings/add', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('DB não conectado');
+  const { discord_username, real_name } = req.body;
+  if (!discord_username || !real_name) return res.status(400).send('Parâmetros obrigatórios ausentes');
+  try {
+    const cleanUsername = discord_username.trim().replace(/^@/, '');
+    await db.query(`
+      INSERT INTO discord_mappings (discord_username, real_name)
+      VALUES ($1, $2)
+      ON CONFLICT (discord_username) DO UPDATE SET real_name = EXCLUDED.real_name
+    `, [cleanUsername, real_name.trim()]);
+    res.redirect('/discord-mappings');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao salvar vínculo');
+  }
+});
+
+app.post('/discord-mappings/delete/:id', ensureAuthenticated, ensureProfessor, async (req, res) => {
+  if (!db) return res.status(500).send('DB não conectado');
+  const id = req.params.id;
+  try {
+    await db.query('DELETE FROM discord_mappings WHERE id = $1', [id]);
+    res.redirect('/discord-mappings');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao excluir vínculo');
+  }
+});
+
 app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
@@ -2483,6 +2631,7 @@ app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, re
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
@@ -3234,6 +3383,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
     ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
