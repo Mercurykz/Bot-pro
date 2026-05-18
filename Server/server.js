@@ -2465,7 +2465,7 @@ app.get('/discord-mappings', ensureAuthenticated, ensureProfessor, async (req, r
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mercury Class | Mapeamento Discord</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>\${MERCURY_THEME}</style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
@@ -2474,10 +2474,10 @@ app.get('/discord-mappings', ensureAuthenticated, ensureProfessor, async (req, r
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
-    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
-    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
-    \${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
-    \${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
+    ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/discord-mappings">👾 Vínculos Discord</a></li>' : ''}
+    ${req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : ''}
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
@@ -2507,7 +2507,7 @@ app.get('/discord-mappings', ensureAuthenticated, ensureProfessor, async (req, r
 
   <div class="card">
     <h2 style="margin-bottom: 16px;">📋 Vínculos Ativos</h2>
-    \${tableHtml}
+    ${tableHtml}
   </div>
 </div>
 
