@@ -112,7 +112,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'vincular_modal') {
       const realName = interaction.fields.getTextInputValue('real_name_input').trim();
-      const username = interaction.user.username;
+      const username = interaction.user.username.toLowerCase();
 
       try {
         await db.query(
@@ -151,7 +151,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         // Busca mapeamento
         const mappingRes = await db.query(
-          `SELECT real_name FROM discord_mappings WHERE discord_username = $1`,
+          `SELECT real_name FROM discord_mappings WHERE LOWER(discord_username) = LOWER($1)`,
           [username]
         );
         if (mappingRes.rowCount === 0) {
@@ -306,7 +306,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       // 💾 busca mapeamento para nome real
       const mappingRes = await db.query(
-        `SELECT real_name FROM discord_mappings WHERE discord_username = $1`,
+        `SELECT real_name FROM discord_mappings WHERE LOWER(discord_username) = LOWER($1)`,
         [username]
       );
 

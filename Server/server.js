@@ -2542,7 +2542,7 @@ app.post('/discord-mappings/add', ensureAuthenticated, ensureProfessor, async (r
   const { discord_username, real_name } = req.body;
   if (!discord_username || !real_name) return res.status(400).send('Parâmetros obrigatórios ausentes');
   try {
-    const cleanUsername = discord_username.trim().replace(/^@/, '');
+    const cleanUsername = discord_username.trim().toLowerCase().replace(/^@/, '');
     await db.query(`
       INSERT INTO discord_mappings (discord_username, real_name)
       VALUES ($1, $2)
