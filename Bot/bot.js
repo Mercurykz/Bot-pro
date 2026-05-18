@@ -9,7 +9,10 @@ const {
   ButtonStyle,
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 const db = require('./database');
 
@@ -90,7 +93,132 @@ process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
 });
 
+function getEmojiForClass(className) {
+  const name = className.toLowerCase();
+  if (name.includes('matematica') || name.includes('cálculo') || name.includes('calculo') || name.includes('math')) return '🧮';
+  if (name.includes('fisica') || name.includes('física') || name.includes('phys')) return '⏳';
+  if (name.includes('quimica') || name.includes('química') || name.includes('chem')) return '🧪';
+  if (name.includes('biolo')) return '🧬';
+  if (name.includes('program') || name.includes('web') || name.includes('comput') || name.includes('dev')) return '💻';
+  if (name.includes('historia') || name.includes('história')) return '📜';
+  if (name.includes('portugues') || name.includes('português') || name.includes('literatura') || name.includes('redacao')) return '📚';
+  if (name.includes('geografia')) return '🗺️';
+  if (name.includes('ingles') || name.includes('inglês') || name.includes('english')) return '🇬🇧';
+  return '🏫';
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
+  // 1. Modal Submit Handler
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'vincular_modal') {
+      const realName = interaction.fields.getTextInputValue('real_name_input').trim();
+      const username = interaction.user.username;
+
+      try {
+        await db.query(
+          `INSERT INTO discord_mappings (discord_username, real_name)
+           VALUES ($1, $2)
+           ON CONFLICT (discord_username) DO UPDATE SET real_name = EXCLUDED.real_name`,
+          [username, realName]
+        );
+
+        await interaction.reply({
+          content: `✅ Conta vinculada com sucesso a **${realName}**!\nDigite o comando `/presenca` novamente para registrar sua presença.`,
+          ephemeral: true
+        });
+      } catch (err) {
+        console.error(err);
+        await interaction.reply({
+          content: '❌ Erro ao vincular sua conta.',
+          ephemeral: true
+        });
+      }
+    }
+    return;
+  }
+
+  // 2. Button Handler
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith('presenca_aula_')) {
+      const parts = interaction.customId.split('_');
+      const sessionId = parseInt(parts[2], 10);
+      const classId = parseInt(parts[3], 10);
+
+      const userId = interaction.user.id;
+      const username = interaction.user.username;
+      const guildId = interaction.guild?.id || 'guild_default';
+
+      try {
+        // Busca mapeamento
+        const mappingRes = await db.query(
+          `SELECT real_name FROM discord_mappings WHERE discord_username = $1`,
+          [username]
+        );
+        if (mappingRes.rowCount === 0) {
+          return interaction.reply({
+            content: '⚠️ Sua conta ainda não está vinculada. Por favor, digite `/presenca` para vincular primeiro.',
+            ephemeral: true
+          });
+        }
+
+        const mappedName = mappingRes.rows[0].real_name;
+
+        // Busca nome da sala
+        const classRes = await db.query('SELECT name FROM classes WHERE id = $1', [classId]);
+        const className = classRes.rowCount > 0 ? classRes.rows[0].name : 'Aula';
+
+        // Registra presença na chamada oficial
+        const checkAtt = await db.query(
+          `SELECT 1 FROM attendances WHERE class_session_id = $1 AND student_name = $2`,
+          [sessionId, mappedName]
+        );
+        if (checkAtt.rowCount === 0) {
+          await db.query(
+            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
+            [sessionId, classId, mappedName]
+          );
+        }
+
+        // 💾 salva presença geral na tabela Discord
+        await db.query(
+          `INSERT INTO presencas (user_id, username, guild_id, data) VALUES ($1, $2, $3, NOW())`,
+          [userId, username, guildId]
+        );
+
+        const total = await db.query(
+          `SELECT COUNT(*) as total FROM presencas WHERE user_id = $1 AND guild_id = $2`,
+          [userId, guildId]
+        );
+        const totalPresencas = total.rows[0].total;
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Presença Confirmada!')
+          .setDescription(`Olá, **${mappedName}**!\nSua presença foi registrada com sucesso na matéria: **${className}**!`)
+          .addFields(
+            { name: '📅 Matéria', value: className, inline: true },
+            { name: '📊 Total no Discord', value: String(totalPresencas), inline: true }
+          )
+          .setColor('#10B981')
+          .setFooter({ text: 'Mercury Class' })
+          .setTimestamp();
+
+        await interaction.update({
+          embeds: [embed],
+          components: [],
+          ephemeral: true
+        });
+      } catch (error) {
+        console.error('Erro ao clicar no botão de presença:', error);
+        await interaction.reply({
+          content: '❌ Erro ao registrar presença na matéria selecionada.',
+          ephemeral: true
+        });
+      }
+    } else if (interaction.commandName !== 'chamada') {
+      // Allow other buttons like standard check-in links to proceed
+    }
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'chamada') {
@@ -143,7 +271,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.commandName === 'presenca') {
-
     const userId = interaction.user.id;
     const username = interaction.user.username;
     const guildId = interaction.guild.id;
@@ -160,9 +287,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     setTimeout(() => cooldown.delete(userId), 5000);
 
     try {
+      // 🔍 verifica se já marcou hoje no Discord
       const hoje = new Date().toISOString().split('T')[0];
-
-      // 🔍 verifica se já marcou hoje
       const check = await db.query(
         `SELECT 1 FROM presencas 
          WHERE user_id = $1 
@@ -184,99 +310,138 @@ client.on(Events.InteractionCreate, async (interaction) => {
         [username]
       );
 
-      let mappedName = username;
-      let activeSessionMsg = '';
+      // CASO A: Aluno NÃO está vinculado ainda -> Exibe o MODAL do Discord
+      if (mappingRes.rowCount === 0) {
+        const modal = new ModalBuilder()
+          .setCustomId('vincular_modal')
+          .setTitle('👾 Vincular Conta | Mercury Class');
 
-      if (mappingRes.rowCount > 0) {
-        mappedName = mappingRes.rows[0].real_name;
-        
-        // Verifica se existe sessão de aula ativa no momento
-        try {
-          // 1. Tenta buscar sessões ativas onde o aluno está matriculado
-          let activeSession = await db.query(
-            `SELECT cs.id, cs.class_id, c.name AS class_name
-             FROM class_sessions cs
-             JOIN classes c ON c.id = cs.class_id
-             JOIN enrollments e ON e.class_id = c.id
-             JOIN users u ON u.id = e.student_id
-             WHERE cs.active = true 
-               AND (LOWER(u.username) = LOWER($1) OR LOWER(u.id) = LOWER($1))
-             ORDER BY cs.start_time DESC
-             LIMIT 1`,
-            [mappedName]
-          );
+        const realNameInput = new TextInputBuilder()
+          .setCustomId('real_name_input')
+          .setLabel('Seu Nome Completo (como na chamada)')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(3)
+          .setMaxLength(100)
+          .setRequired(true)
+          .setPlaceholder('Ex: Ygor Belarmino da silva');
 
-          // 2. Se não achou por matrícula, busca qualquer sessão ativa recente como fallback
-          if (activeSession.rowCount === 0) {
-            activeSession = await db.query(
-              `SELECT cs.id, cs.class_id, c.name AS class_name
-               FROM class_sessions cs
-               JOIN classes c ON c.id = cs.class_id
-               WHERE cs.active = true
-               ORDER BY cs.start_time DESC
-               LIMIT 1`
-            );
-          }
+        const firstRow = new ActionRowBuilder().addComponents(realNameInput);
+        modal.addComponents(firstRow);
 
-          if (activeSession.rowCount > 0) {
-            const sessionId = activeSession.rows[0].id;
-            const classId = activeSession.rows[0].class_id;
-            const className = activeSession.rows[0].class_name;
-            
-            // Verifica se o aluno já tem presença nesta sessão
-            const checkAtt = await db.query(
-              `SELECT 1 FROM attendances WHERE class_session_id = $1 AND student_name = $2`,
-              [sessionId, mappedName]
-            );
-            if (checkAtt.rowCount === 0) {
-              await db.query(
-                `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-                [sessionId, classId, mappedName]
-              );
-              activeSessionMsg = `\n📖 **Chamada Escolar:** Registrado como **${mappedName}** na aula ativa de **${className}**!`;
-            } else {
-              activeSessionMsg = `\n📖 **Chamada Escolar:** Você já tem presença registrada na aula ativa de **${className}**.`;
-            }
-          }
-        } catch (sessErr) {
-          console.error('Erro ao registrar presença em chamada ativa via Discord:', sessErr);
-        }
+        await interaction.showModal(modal);
+        return;
       }
 
-      // 💾 salva presença geral na tabela Discord
-      await db.query(
-        `INSERT INTO presencas (user_id, username, guild_id, data)
-         VALUES ($1, $2, $3, NOW())`,
-        [userId, username, guildId]
+      // CASO B: Aluno já vinculado
+      const mappedName = mappingRes.rows[0].real_name;
+
+      // Busca todas as sessões de aula ativas
+      const activeSessions = await db.query(
+        `SELECT cs.id, cs.class_id, c.name AS class_name
+         FROM class_sessions cs
+         JOIN classes c ON c.id = cs.class_id
+         WHERE cs.active = true
+         ORDER BY cs.start_time DESC`
       );
 
-      // 📊 total do usuário
-      const total = await db.query(
-        `SELECT COUNT(*) as total 
-         FROM presencas 
-         WHERE user_id = $1 AND guild_id = $2`,
-        [userId, guildId]
-      );
+      // Sub-Caso 1: Nenhuma aula ativa
+      if (activeSessions.rowCount === 0) {
+        await db.query(
+          `INSERT INTO presencas (user_id, username, guild_id, data) VALUES ($1, $2, $3, NOW())`,
+          [userId, username, guildId]
+        );
 
-      const totalPresencas = total.rows[0].total;
+        const total = await db.query(
+          `SELECT COUNT(*) as total FROM presencas WHERE user_id = $1 AND guild_id = $2`,
+          [userId, guildId]
+        );
+        const totalPresencas = total.rows[0].total;
 
-      // 🎨 embed bonito
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Presença Registrada')
+          .setDescription(`Olá, **${mappedName}**!\nSua presença geral no Discord foi confirmada (nenhuma aula ativa no momento).`)
+          .addFields(
+            { name: '📅 Hoje', value: 'Confirmada', inline: true },
+            { name: '📊 Total', value: String(totalPresencas), inline: true }
+          )
+          .setColor('#5865F2')
+          .setFooter({ text: 'Mercury Class' })
+          .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+      }
+
+      // Sub-Caso 2: Exatamente uma aula ativa -> registra presença automaticamente
+      if (activeSessions.rowCount === 1) {
+        const sessionId = activeSessions.rows[0].id;
+        const classId = activeSessions.rows[0].class_id;
+        const className = activeSessions.rows[0].class_name;
+
+        // Registra presença na chamada oficial
+        const checkAtt = await db.query(
+          `SELECT 1 FROM attendances WHERE class_session_id = $1 AND student_name = $2`,
+          [sessionId, mappedName]
+        );
+        if (checkAtt.rowCount === 0) {
+          await db.query(
+            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
+            [sessionId, classId, mappedName]
+          );
+        }
+
+        // 💾 salva presença geral na tabela Discord
+        await db.query(
+          `INSERT INTO presencas (user_id, username, guild_id, data) VALUES ($1, $2, $3, NOW())`,
+          [userId, username, guildId]
+        );
+
+        const total = await db.query(
+          `SELECT COUNT(*) as total FROM presencas WHERE user_id = $1 AND guild_id = $2`,
+          [userId, guildId]
+        );
+        const totalPresencas = total.rows[0].total;
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Presença Registrada')
+          .setDescription(`Olá, **${mappedName}**!\n📖 **Chamada Escolar:** Presença confirmada na aula ativa de **${className}**!`)
+          .addFields(
+            { name: '📅 Matéria', value: className, inline: true },
+            { name: '📊 Total', value: String(totalPresencas), inline: true }
+          )
+          .setColor('#5865F2')
+          .setFooter({ text: 'Mercury Class' })
+          .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+      }
+
+      // Sub-Caso 3: Múltiplas aulas ativas -> gera botões interativos para escolha
       const embed = new EmbedBuilder()
-        .setTitle('✅ Presença Registrada')
-        .setDescription(`Bem-vindo, **${mappedName}**!${activeSessionMsg}`)
-        .addFields(
-          { name: '📅 Hoje', value: 'Presença confirmada', inline: true },
-          { name: '📊 Total', value: String(totalPresencas), inline: true }
-        )
+        .setTitle('🏫 Escolha sua Aula')
+        .setDescription(`Olá, **${mappedName}**!\nIdentificamos mais de uma aula ativa no momento. Clique no botão correspondente para registrar sua presença:`)
         .setColor('#5865F2')
-        .setFooter({ text: 'Sistema SaaS Escolar' })
+        .setFooter({ text: 'Mercury Class' })
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      const row = new ActionRowBuilder();
+      activeSessions.rows.forEach(session => {
+        const emoji = getEmojiForClass(session.class_name);
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`presenca_aula_${session.id}_${session.class_id}`)
+            .setLabel(`${emoji} ${session.class_name}`)
+            .setStyle(ButtonStyle.Primary)
+        );
+      });
+
+      return interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+      });
 
     } catch (error) {
       console.error(error);
-
       interaction.reply({
         content: '❌ Erro ao registrar presença.',
         ephemeral: true
