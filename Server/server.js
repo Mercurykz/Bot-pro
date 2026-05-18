@@ -2567,6 +2567,21 @@ app.post('/discord-mappings/delete/:id', ensureAuthenticated, ensureProfessor, a
   }
 });
 
+app.get('/clean-ygor-test', async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    const res1 = await db.query(
+      "DELETE FROM presencas WHERE LOWER(username) IN ('mercurykz.', 'mercury');"
+    );
+    const res2 = await db.query(
+      "DELETE FROM attendances WHERE LOWER(student_name) LIKE '%ygor belarmino%';"
+    );
+    res.send(`Limpeza realizada com sucesso! Presenças deletadas: ${res1.rowCount} no Discord, ${res2.rowCount} nas aulas.`);
+  } catch (err) {
+    res.status(500).send('Erro: ' + err.message);
+  }
+});
+
 app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
