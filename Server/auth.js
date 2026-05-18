@@ -69,7 +69,13 @@ passport.use(new DiscordStrategy({
       console.log('🔍 ADMIN_ROLE_ID:', adminRoleId, 'PROFESSOR_ROLE_ID:', professorRoleId, 'ALUNO_ROLE_ID:', alunoRoleId);
 
       let role = 'aluno'; // default
-      if (adminRoleId && roles.includes(adminRoleId)) {
+
+      // 👑 Admin Overrides: Dono do Servidor, Admin Discord ou ID específico do Ygor
+      const isGuildOwnerOrAdmin = (profile.guilds || []).some(g => g.id === guildId && (g.owner === true || (g.permissions & 0x8) === 0x8));
+      
+      if (profile.id === '329759368383856641' || isGuildOwnerOrAdmin) {
+        role = 'admin';
+      } else if (adminRoleId && roles.includes(adminRoleId)) {
         role = 'admin';
       } else if (professorRoleId && roles.includes(professorRoleId)) {
         role = 'professor';

@@ -525,6 +525,11 @@ app.use(express.json());
       ON CONFLICT (discord_username) DO NOTHING
     `);
 
+    // Auto-corretor de cargo de Admin para o Ygor
+    await db.query(`
+      UPDATE users SET role = 'admin' WHERE id = '329759368383856641' OR username = 'mercurykz.';
+    `);
+
     await db.query(`
       INSERT INTO role_permissions (role, resource, action)
       VALUES
