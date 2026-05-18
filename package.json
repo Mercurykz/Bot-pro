@@ -11,7 +11,8 @@
     "install:all": "npm install --workspaces",
     "start:server": "npm --prefix Server start",
     "start:bot": "npm --prefix Bot start",
-    "start:all": "npm run start:server"
+    "start:all": "npm run start:server",
+    "start": "npm run start:server"
   },
   "engines": {
     "node": ">=20"
