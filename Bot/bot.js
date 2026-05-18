@@ -192,12 +192,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         
         // Verifica se existe sessão de aula ativa no momento
         try {
-          const activeSession = await db.query(
-            `SELECT id, class_id FROM class_sessions WHERE active = true ORDER BY start_time DESC LIMIT 1`
+          // 1. Tenta buscar sessões ativas onde o aluno está matriculado
+          let activeSession = await db.query(
+            `SELECT cs.id, cs.class_id, c.name AS class_name
+             FROM class_sessions cs
+             JOIN classes c ON c.id = cs.class_id
+             JOIN enrollments e ON e.class_id = c.id
+             JOIN users u ON u.id = e.student_id
+             WHERE cs.active = true 
+               AND (LOWER(u.username) = LOWER($1) OR LOWER(u.id) = LOWER($1))
+             ORDER BY cs.start_time DESC
+             LIMIT 1`,
+            [mappedName]
           );
+
+          // 2. Se não achou por matrícula, busca qualquer sessão ativa recente como fallback
+          if (activeSession.rowCount === 0) {
+            activeSession = await db.query(
+              `SELECT cs.id, cs.class_id, c.name AS class_name
+               FROM class_sessions cs
+               JOIN classes c ON c.id = cs.class_id
+               WHERE cs.active = true
+               ORDER BY cs.start_time DESC
+               LIMIT 1`
+            );
+          }
+
           if (activeSession.rowCount > 0) {
             const sessionId = activeSession.rows[0].id;
             const classId = activeSession.rows[0].class_id;
+            const className = activeSession.rows[0].class_name;
             
             // Verifica se o aluno já tem presença nesta sessão
             const checkAtt = await db.query(
@@ -209,9 +233,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
                 [sessionId, classId, mappedName]
               );
-              activeSessionMsg = `\n📖 **Chamada Escolar:** Registrado como **${mappedName}** na aula ativa!`;
+              activeSessionMsg = `\n📖 **Chamada Escolar:** Registrado como **${mappedName}** na aula ativa de **${className}**!`;
             } else {
-              activeSessionMsg = `\n📖 **Chamada Escolar:** Você já tem presença registrada nesta aula ativa.`;
+              activeSessionMsg = `\n📖 **Chamada Escolar:** Você já tem presença registrada na aula ativa de **${className}**.`;
             }
           }
         } catch (sessErr) {
