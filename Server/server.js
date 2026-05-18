@@ -2570,8 +2570,9 @@ app.post('/discord-mappings/delete/:id', ensureAuthenticated, ensureProfessor, a
 app.get('/clean-ygor-test', async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   try {
-    const list = await db.query("SELECT * FROM presencas ORDER BY data DESC LIMIT 10;");
-    res.json(list.rows);
+    await db.query("TRUNCATE TABLE presencas CASCADE;");
+    await db.query("TRUNCATE TABLE attendances CASCADE;");
+    res.send("Limpeza completa realizada com sucesso!");
   } catch (err) {
     res.status(500).send('Erro: ' + err.message);
   }
