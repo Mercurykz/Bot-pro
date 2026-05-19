@@ -530,6 +530,25 @@ app.use(express.json());
       UPDATE users SET role = 'admin' WHERE id = '329759368383856641' OR username = 'mercurykz.';
     `);
 
+    // 🔄 Sincronizador retroativo de presenças antigas (associa student_id faltante)
+    try {
+      await db.query(`
+        UPDATE attendances a
+        SET student_id = u.id
+        FROM discord_mappings dm
+        JOIN users u ON (
+          LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username))
+          OR LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) || '.'
+          OR LOWER(TRIM(REPLACE(u.username, '.', ''))) = LOWER(TRIM(dm.discord_username))
+        )
+        WHERE a.student_id IS NULL
+          AND LOWER(TRIM(a.student_name)) = LOWER(TRIM(dm.real_name));
+      `);
+      console.log('  ✓ Sincronização retroativa de presenças antigas concluída com sucesso!');
+    } catch (syncErr) {
+      console.warn('  ⚠️ Falha na sincronização retroativa de presenças:', syncErr.message);
+    }
+
     await db.query(`
       INSERT INTO role_permissions (role, resource, action)
       VALUES
