@@ -2591,17 +2591,6 @@ app.post('/discord-mappings/delete/:id', ensureAuthenticated, ensureProfessor, a
   }
 });
 
-app.get('/clean-ygor-test', async (req, res) => {
-  if (!db) return res.send('Erro: DB não conectado.');
-  try {
-    await db.query("TRUNCATE TABLE presencas CASCADE;");
-    await db.query("TRUNCATE TABLE attendances CASCADE;");
-    res.send("Limpeza completa realizada com sucesso!");
-  } catch (err) {
-    res.status(500).send('Erro: ' + err.message);
-  }
-});
-
 app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
