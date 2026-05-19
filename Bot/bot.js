@@ -174,8 +174,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
         if (checkAtt.rowCount === 0) {
           await db.query(
-            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-            [sessionId, classId, mappedName]
+            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at, student_id) VALUES ($1, $2, $3, NOW(), $4)`,
+            [sessionId, classId, mappedName, userId]
           );
         }
 
@@ -384,8 +384,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
         if (checkAtt.rowCount === 0) {
           await db.query(
-            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at) VALUES ($1, $2, $3, NOW())`,
-            [sessionId, classId, mappedName]
+            `INSERT INTO attendances (class_session_id, class_id, student_name, login_at, student_id) VALUES ($1, $2, $3, NOW(), $4)`,
+            [sessionId, classId, mappedName, userId]
           );
         }
 

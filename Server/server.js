@@ -2814,6 +2814,33 @@ app.get('/api/class/:id/grade-data', ensureAuthenticated, ensureProfessor, async
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
+    // 🛡️ Auto-matriculador de alunos (Self-Healer Dinâmico)
+    // 1. Auto-matricula usando o student_id direto (se preenchido na tabela attendances)
+    await db.query(`
+      INSERT INTO enrollments (student_id, class_id)
+      SELECT DISTINCT a.student_id, cs.class_id
+      FROM attendances a
+      JOIN class_sessions cs ON cs.id = a.class_session_id
+      WHERE cs.class_id = $1 AND a.student_id IS NOT NULL
+      ON CONFLICT (student_id, class_id) DO NOTHING
+    `, [classId]);
+
+    // 2. Auto-matricula resolvendo o student_id através do mapeamento de nome real/username Discord (para chamadas legadas/bot)
+    await db.query(`
+      INSERT INTO enrollments (student_id, class_id)
+      SELECT DISTINCT u.id, cs.class_id
+      FROM attendances a
+      JOIN class_sessions cs ON cs.id = a.class_session_id
+      JOIN discord_mappings dm ON LOWER(TRIM(dm.real_name)) = LOWER(TRIM(a.student_name))
+      JOIN users u ON (
+        LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) 
+        OR LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) || '.'
+        OR LOWER(TRIM(REPLACE(u.username, '.', ''))) = LOWER(TRIM(dm.discord_username))
+      )
+      WHERE cs.class_id = $1
+      ON CONFLICT (student_id, class_id) DO NOTHING
+    `, [classId]);
+
     const studentsRes = await db.query(`
       SELECT e.student_id, u.username, u.username AS student_name
       FROM enrollments e
@@ -2855,6 +2882,33 @@ app.get('/class/:id/grade/exportar', ensureAuthenticated, ensureProfessor, async
     const classRes = await db.query('SELECT name FROM classes WHERE id = $1', [classId]);
     if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
     const className = classRes.rows[0].name;
+
+    // 🛡️ Auto-matriculador de alunos (Self-Healer Dinâmico)
+    // 1. Auto-matricula usando o student_id direto (se preenchido na tabela attendances)
+    await db.query(`
+      INSERT INTO enrollments (student_id, class_id)
+      SELECT DISTINCT a.student_id, cs.class_id
+      FROM attendances a
+      JOIN class_sessions cs ON cs.id = a.class_session_id
+      WHERE cs.class_id = $1 AND a.student_id IS NOT NULL
+      ON CONFLICT (student_id, class_id) DO NOTHING
+    `, [classId]);
+
+    // 2. Auto-matricula resolvendo o student_id através do mapeamento de nome real/username Discord (para chamadas legadas/bot)
+    await db.query(`
+      INSERT INTO enrollments (student_id, class_id)
+      SELECT DISTINCT u.id, cs.class_id
+      FROM attendances a
+      JOIN class_sessions cs ON cs.id = a.class_session_id
+      JOIN discord_mappings dm ON LOWER(TRIM(dm.real_name)) = LOWER(TRIM(a.student_name))
+      JOIN users u ON (
+        LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) 
+        OR LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) || '.'
+        OR LOWER(TRIM(REPLACE(u.username, '.', ''))) = LOWER(TRIM(dm.discord_username))
+      )
+      WHERE cs.class_id = $1
+      ON CONFLICT (student_id, class_id) DO NOTHING
+    `, [classId]);
 
     const studentsRes = await db.query(`
       SELECT e.student_id, u.username AS student_name
