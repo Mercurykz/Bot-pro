@@ -754,7 +754,7 @@ app.get('/admin/db-manager', ensureAuthenticated, ensureAdmin, async (req, res) 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mercury Class | Gestão de Backup</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>\${MERCURY_THEME}</style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
