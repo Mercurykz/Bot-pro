@@ -745,6 +745,230 @@ app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) =>
   }
 });
 
+app.get('/admin/db-manager', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercury Class | Gestão de Backup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>\${MERCURY_THEME}</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Mercury Class</h2>
+  <ul class="nav-menu">
+    <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/subjects">📚 Matérias</a></li>
+    <li><a href="/chamadas">📋 Chamadas</a></li>
+    <li><a href="/admin/db-check">🧪 Diagnóstico DB</a></li>
+    <li><a href="/admin/db-manager" class="active">💾 Gestão de Backup</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>💾 Gestão de Backup e Migração</h1>
+    <p>Ferramenta premium de importação/exportação de dados para manutenção do sistema</p>
+  </div>
+
+  <div class="grid">
+    <!-- Bloco de Exportação -->
+    <div class="card">
+      <h2>📥 Passo 1: Exportar Dados Recentes (Segunda em diante)</h2>
+      <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 13px;">
+        Baixe todas as sessões, chamadas e mapeamentos de alunos registrados a partir de segunda-feira (18 de maio de 2026).
+      </p>
+      <a href="/admin/db-manager/export" class="btn btn-export-all" style="width: 100%; text-decoration: none;">
+        📥 Baixar Arquivo JSON de Backup
+      </a>
+    </div>
+
+    <!-- Bloco de Importação -->
+    <div class="card">
+      <h2>📤 Passo 2: Importar Dados de Volta</h2>
+      <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 13px;">
+        Após restaurar o backup na Railway, envie o arquivo JSON baixado acima para reinserir as presenças de ontem sem duplicar dados.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+        <input type="file" id="importFile" accept=".json" style="padding: 10px; background: rgba(5,7,12,0.4); border: 1px dashed var(--border-color); border-radius: 8px; color: var(--text-light); cursor: pointer;" />
+        <button id="btnImport" onclick="importBackup()" style="width: 100%;">📤 Restaurar Dados Salvos</button>
+      </div>
+      <div id="importResult" style="margin-top: 15px; font-size: 13px;"></div>
+    </div>
+  </div>
+
+  <a href="/admin/dashboard" class="back-link">← Voltar ao Painel Admin</a>
+</div>
+
+<script>
+async function importBackup() {
+  const fileInput = document.getElementById('importFile');
+  const resultDiv = document.getElementById('importResult');
+  const btn = document.getElementById('btnImport');
+  
+  if (!fileInput.files.length) {
+    alert('Por favor, selecione o arquivo JSON de backup.');
+    return;
+  }
+  
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  
+  btn.disabled = true;
+  btn.innerText = 'Processando...';
+  resultDiv.innerHTML = '<span style="color: var(--warning);">⏳ Enviando e processando dados...</span>';
+  
+  reader.onload = async function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const response = await fetch('/admin/db-manager/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      const resData = await response.json();
+      btn.disabled = false;
+      btn.innerText = '📤 Restaurar Dados Salvos';
+      
+      if (response.ok && resData.success) {
+        resultDiv.innerHTML = \`<span style="color: var(--success); font-weight: 600;">✅ Sucesso! \${resData.summary}</span>\`;
+        alert('Dados restaurados e sincronizados com sucesso!');
+      } else {
+        resultDiv.innerHTML = \`<span style="color: var(--danger);">❌ Erro: \${resData.error || 'Falha ao importar'}</span>\`;
+      }
+    } catch(err) {
+      btn.disabled = false;
+      btn.innerText = '📤 Restaurar Dados Salvos';
+      resultDiv.innerHTML = \`<span style="color: var(--danger);">❌ Erro ao ler arquivo: \${err.message}</span>\`;
+    }
+  };
+  
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>
+  `);
+});
+
+app.get('/admin/db-manager/export', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const sessions = await db.query(
+      `SELECT * FROM class_sessions WHERE start_time >= '2026-05-18 00:00:00'`
+    );
+    const attendances = await db.query(
+      `SELECT * FROM attendances WHERE login_at >= '2026-05-18 00:00:00'`
+    );
+    const mappings = await db.query(
+      `SELECT * FROM discord_mappings`
+    );
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="mercury-backup-ontem.json"');
+    res.json({
+      sessions: sessions.rows,
+      attendances: attendances.rows,
+      mappings: mappings.rows,
+      exportedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Erro na exportação de backup:', err);
+    res.status(500).json({ error: 'Erro ao exportar backup: ' + err.message });
+  }
+});
+
+app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.json({ limit: '10mb' }), async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const { sessions, attendances, mappings } = req.body;
+    
+    let sessionsImported = 0;
+    let attendancesImported = 0;
+    let mappingsImported = 0;
+    
+    // 1. Mapeamentos Discord
+    if (mappings && Array.isArray(mappings)) {
+      for (const m of mappings) {
+        await db.query(`
+          INSERT INTO discord_mappings (discord_username, real_name)
+          VALUES ($1, $2)
+          ON CONFLICT (discord_username) DO UPDATE SET real_name = EXCLUDED.real_name
+        `, [m.discord_username, m.real_name]);
+        mappingsImported++;
+      }
+    }
+    
+    // 2. Sessões de Aula
+    if (sessions && Array.isArray(sessions)) {
+      for (const s of sessions) {
+        await db.query(`
+          INSERT INTO class_sessions 
+          (id, class_id, start_time, end_time, active, geofence_latitude, geofence_longitude, geofence_radius_meters, geofence_source)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          s.id, s.class_id, s.start_time, s.end_time, s.active, 
+          s.geofence_latitude, s.geofence_longitude, s.geofence_radius_meters, s.geofence_source
+        ]);
+        sessionsImported++;
+      }
+    }
+    
+    // 3. Presenças
+    if (attendances && Array.isArray(attendances)) {
+      for (const a of attendances) {
+        await db.query(`
+          INSERT INTO attendances (id, class_session_id, class_id, student_name, login_at, status, student_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          a.id, a.class_session_id, a.class_id, a.student_name, a.login_at, a.status, a.student_id
+        ]);
+        attendancesImported++;
+      }
+    }
+    
+    // 4. Executa auto-sincronizador para resolver os student_id nulos que acabamos de importar
+    try {
+      await db.query(`
+        UPDATE attendances a
+        SET student_id = u.id
+        FROM discord_mappings dm
+        JOIN users u ON (
+          LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username))
+          OR LOWER(TRIM(u.username)) = LOWER(TRIM(dm.discord_username)) || '.'
+          OR LOWER(TRIM(REPLACE(u.username, '.', ''))) = LOWER(TRIM(dm.discord_username))
+        )
+        WHERE a.student_id IS NULL
+          AND LOWER(TRIM(a.student_name)) = LOWER(TRIM(dm.real_name));
+      `);
+    } catch (syncErr) {
+      console.warn('Erro ao sincronizar presenças na importação:', syncErr.message);
+    }
+    
+    res.json({
+      success: true,
+      summary: `Importado: \${sessionsImported} sessões, \${attendancesImported} presenças, \${mappingsImported} mapeamentos.`,
+      details: { sessionsImported, attendancesImported, mappingsImported }
+    });
+  } catch (err) {
+    console.error('Erro na importação de backup:', err);
+    res.status(500).json({ error: 'Erro ao importar backup: ' + err.message });
+  }
+});
+
+
 app.get('/admin/institucional-status', ensureAuthenticated, ensureAdmin, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   try {
@@ -3688,6 +3912,7 @@ app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) =
     <li><a href="/subjects">📚 Matérias</a></li>
     <li><a href="/chamadas">📋 Chamadas</a></li>
     <li><a href="/admin/db-check">🧪 Diagnóstico DB</a></li>
+    <li><a href="/admin/db-manager">💾 Gestão de Backup</a></li>
     <li><a href="/logout">🚪 Sair</a></li>
   </ul>
 </div>
