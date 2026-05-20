@@ -802,12 +802,53 @@ app.get('/admin/db-manager', ensureAuthenticated, ensureAdmin, async (req, res) 
       </div>
       <div id="importResult" style="margin-top: 15px; font-size: 13px;"></div>
     </div>
+
+    <!-- Bloco de Sincronização Inteligente -->
+    <div class="card" style="grid-column: span 2;">
+      <h2>🔗 Auto-Gerar Vínculos do Discord (Chamada de Segunda)</h2>
+      <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 13px;">
+        Como os alunos assinaram a chamada de segunda-feira pelo site logados com o Discord, podemos puxar os nomes reais que eles digitaram e gerar os vínculos oficiais deles automaticamente! Eles aparecerão na lista de Vínculos Ativos na hora.
+      </p>
+      <button id="btnSync" onclick="syncMappings()" class="btn" style="background: linear-gradient(135deg, #a855f7, #7c3aed); width: 100%;">
+        🔄 Gerar Vínculos Automaticamente com o Discord
+      </button>
+      <div id="syncResult" style="margin-top: 15px; font-size: 13px; text-align: center;"></div>
+    </div>
   </div>
 
   <a href="/admin/dashboard" class="back-link">← Voltar ao Painel Admin</a>
 </div>
 
 <script>
+async function syncMappings() {
+  const resultDiv = document.getElementById('syncResult');
+  const btn = document.getElementById('btnSync');
+  
+  btn.disabled = true;
+  btn.innerText = 'Processando...';
+  resultDiv.innerHTML = '<span style="color: var(--warning);">⏳ Gerando vínculos com base na chamada de segunda...</span>';
+  
+  try {
+    const response = await fetch('/admin/db-manager/sync-mappings', {
+      method: 'POST'
+    });
+    const resData = await response.json();
+    btn.disabled = false;
+    btn.innerText = '🔄 Gerar Vínculos Automaticamente com o Discord';
+    
+    if (response.ok && resData.success) {
+      resultDiv.innerHTML = \`<span style="color: var(--success); font-weight: 600;">✅ Sucesso! \${resData.message}</span>\`;
+      alert('Vínculos gerados com sucesso!');
+    } else {
+      resultDiv.innerHTML = \`<span style="color: var(--danger);">❌ Erro: \${resData.error || 'Falha ao sincronizar'}</span>\`;
+    }
+  } catch(err) {
+    btn.disabled = false;
+    btn.innerText = '🔄 Gerar Vínculos Automaticamente com o Discord';
+    resultDiv.innerHTML = \`<span style="color: var(--danger);">❌ Erro: \${err.message}</span>\`;
+  }
+}
+
 async function importBackup() {
   const fileInput = document.getElementById('importFile');
   const resultDiv = document.getElementById('importResult');
@@ -965,6 +1006,31 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
   } catch (err) {
     console.error('Erro na importação de backup:', err);
     res.status(500).json({ error: 'Erro ao importar backup: ' + err.message });
+  }
+});
+
+app.post('/admin/db-manager/sync-mappings', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.status(500).json({ error: 'DB não conectado' });
+  try {
+    const result = await db.query(`
+      INSERT INTO discord_mappings (discord_username, real_name)
+      SELECT DISTINCT LOWER(TRIM(u.username)), TRIM(a.student_name)
+      FROM attendances a
+      JOIN users u ON a.student_id = u.id
+      WHERE a.login_at >= '2026-05-18 00:00:00'
+        AND a.student_name IS NOT NULL
+        AND u.username IS NOT NULL
+      ON CONFLICT (discord_username) DO UPDATE SET real_name = EXCLUDED.real_name
+      RETURNING discord_username;
+    `);
+    
+    res.json({
+      success: true,
+      message: \`Criado/atualizado o vínculo de \${result.rowCount} alunos com sucesso com base na chamada de segunda!\`
+    });
+  } catch (err) {
+    console.error('Erro ao sincronizar mapeamentos:', err);
+    res.status(500).json({ error: 'Erro ao gerar vínculos: ' + err.message });
   }
 });
 
