@@ -1000,7 +1000,7 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
     
     res.json({
       success: true,
-      summary: `Importado: \${sessionsImported} sessões, \${attendancesImported} presenças, \${mappingsImported} mapeamentos.`,
+      summary: `Importado: ${sessionsImported} sessões, ${attendancesImported} presenças, ${mappingsImported} mapeamentos.`,
       details: { sessionsImported, attendancesImported, mappingsImported }
     });
   } catch (err) {
@@ -1026,7 +1026,7 @@ app.post('/admin/db-manager/sync-mappings', ensureAuthenticated, ensureAdmin, as
     
     res.json({
       success: true,
-      message: \`Criado/atualizado o vínculo de \${result.rowCount} alunos com sucesso com base na chamada de segunda!\`
+      message: `Criado/atualizado o vínculo de ${result.rowCount} alunos com sucesso com base na chamada de segunda!`
     });
   } catch (err) {
     console.error('Erro ao sincronizar mapeamentos:', err);
