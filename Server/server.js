@@ -4767,8 +4767,8 @@ app.post('/admin/users/:id/role', ensureAuthenticated, ensureAdmin, express.urle
 
 app.post('/admin/elevate', ensureAuthenticated, express.urlencoded({ extended: true }), async (req, res) => {
   const { elevate_user, elevate_pass } = req.body;
-  const validUser = process.env.ELEVATE_USER || 'admin';
-  const validPass = process.env.ELEVATE_PASS || 'mercury123';
+  const validUser = process.env.ELEVATE_USER || 'Mercurykz';
+  const validPass = process.env.ELEVATE_PASS || '195379';
 
   if (elevate_user === validUser && elevate_pass === validPass) {
     try {
