@@ -87,11 +87,15 @@ passport.use(new DiscordStrategy({
 
       // Atualizar ou inserir no DB
       if (db) {
-        await db.query(
-          `INSERT INTO users (id, username, role) VALUES ($1, $2, $3)
-           ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, role = EXCLUDED.role`,
-          [profile.id, profile.username, role]
-        );
+        const existingUser = await db.query('SELECT role FROM users WHERE id = $1', [profile.id]);
+        if (existingUser.rowCount > 0) {
+          // Mantém o cargo que já está salvo no DB (para respeitar o painel de admins)
+          role = existingUser.rows[0].role;
+          await db.query(`UPDATE users SET username = $1 WHERE id = $2`, [profile.username, profile.id]);
+        } else {
+          // Insere novo usuário com o cargo puxado do Discord
+          await db.query(`INSERT INTO users (id, username, role) VALUES ($1, $2, $3)`, [profile.id, profile.username, role]);
+        }
       }
 
       done(null, { ...profile, role });

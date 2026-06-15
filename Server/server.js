@@ -1332,9 +1332,13 @@ app.get('/dashboard', async (req, res) => {
 <body>
   <div class="sidebar">
     <h2>✨ Mercury Class</h2>
-    <div class="user-info">
-      <p>${req.user.username}</p>
-      <p>👨‍🎓 Aluno</p>
+    <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+      <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
+      <div>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+          ${req.user.role === 'admin' ? '👑 ADMIN' : req.user.role === 'professor' ? '👨‍🏫 PROFESSOR' : '👨‍🎓 ALUNO'}
+        </span>
+      </div>
     </div>
     <ul class="nav-menu">
       <li><a href="/dashboard">📊 Minha Frequência</a></li>
@@ -1492,9 +1496,13 @@ if (ctx) {
 <div class="sidebar">
   <h2>✨ Mercury Class</h2>
   
-  <div class="user-info">
-    <p>${req.user.username}</p>
-    <p>${req.user.role === 'professor' ? '👨‍🏫 Professor' : '👨‍🎓 Aluno'}</p>
+  <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+    <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
+    <div>
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+        ${req.user.role === 'admin' ? '👑 ADMIN' : req.user.role === 'professor' ? '👨‍🏫 PROFESSOR' : '👨‍🎓 ALUNO'}
+      </span>
+    </div>
   </div>
 
   <ul class="nav-menu">
@@ -1725,9 +1733,13 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
   <div class="sidebar">
     <h2>✨ Mercury Class</h2>
 
-    <div class="user-info">
-      <p>${req.user.username}</p>
-      <p>👨‍🎓 Aluno</p>
+    <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+      <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
+      <div>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+          ${req.user.role === 'admin' ? '👑 ADMIN' : req.user.role === 'professor' ? '👨‍🏫 PROFESSOR' : '👨‍🎓 ALUNO'}
+        </span>
+      </div>
     </div>
 
     <ul class="nav-menu">
