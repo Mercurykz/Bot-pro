@@ -4600,13 +4600,13 @@ app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
     
     const userRows = users.rows.map(u => `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 12px;">\${u.username}</td>
+        <td style="padding: 12px;">${u.username}</td>
         <td style="padding: 12px;">
-          <form method="POST" action="/admin/users/\${u.id}/role" style="display: flex; gap: 8px; margin: 0;">
+          <form method="POST" action="/admin/users/${u.id}/role" style="display: flex; gap: 8px; margin: 0;">
             <select name="role" style="padding: 6px; border-radius: 4px; background: var(--bg-dark); color: var(--text-light); border: 1px solid var(--border-color);">
-              <option value="aluno" \${u.role === 'aluno' ? 'selected' : ''}>Aluno</option>
-              <option value="professor" \${u.role === 'professor' ? 'selected' : ''}>Professor</option>
-              <option value="admin" \${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+              <option value="aluno" ${u.role === 'aluno' ? 'selected' : ''}>Aluno</option>
+              <option value="professor" ${u.role === 'professor' ? 'selected' : ''}>Professor</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
             </select>
             <button type="submit" style="padding: 6px 12px; font-size: 12px; border-radius: 4px;">Salvar</button>
           </form>
@@ -4614,7 +4614,7 @@ app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
       </tr>
     `).join('');
 
-    res.send(\`
+    res.send(`
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -4622,7 +4622,7 @@ app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mercury Class | Gerenciar Usuários</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>\${MERCURY_THEME}</style>
+  <style>${MERCURY_THEME}</style>
 </head>
 <body>
 
@@ -4656,7 +4656,7 @@ app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        \${userRows}
+        ${userRows}
       </tbody>
     </table>
   </div>
@@ -4664,7 +4664,7 @@ app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
 
 </body>
 </html>
-    \`);
+    `);
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao carregar usuários');
