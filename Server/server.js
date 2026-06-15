@@ -367,7 +367,7 @@ app.use(express.json());
 
     // Garante colunas do novo modelo de sessão
     console.log('📋 Verificando migração de colunas...');
-    
+
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS subject_id INTEGER REFERENCES subjects(id)`);
     console.log('  ✓ classes.subject_id OK');
 
@@ -384,13 +384,13 @@ app.use(express.json());
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS campus_longitude NUMERIC(10,7)`);
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS campus_radius_meters INTEGER NOT NULL DEFAULT 150`);
     console.log('  ✓ classes geofence (campus_latitude/campus_longitude/campus_radius_meters) OK');
-    
+
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
     console.log('  ✓ classes.active OK');
-    
+
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     console.log('  ✓ classes.started_at OK');
-    
+
     await db.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`);
     console.log('  ✓ classes.end_time OK');
 
@@ -399,13 +399,13 @@ app.use(express.json());
     await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER`);
     await db.query(`ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS geofence_source TEXT`);
     console.log('  ✓ class_sessions geofence por sessão OK');
-    
+
     // Verificar se a coluna class_session_id existe antes de tentar usá-la
     const classSessionIdExists = await db.query(`
       SELECT 1 FROM information_schema.columns 
       WHERE table_name = 'attendances' AND column_name = 'class_session_id'
     `);
-    
+
     if (!classSessionIdExists.rowCount) {
       console.log('  ⚠ Criando attendances.class_session_id...');
       await db.query(`ALTER TABLE attendances ADD COLUMN class_session_id INTEGER REFERENCES class_sessions(id)`);
@@ -413,13 +413,13 @@ app.use(express.json());
     } else {
       console.log('  ✓ attendances.class_session_id já existe');
     }
-    
+
     // Verificar se a coluna student_name existe
     const studentNameExists = await db.query(`
       SELECT 1 FROM information_schema.columns 
       WHERE table_name = 'attendances' AND column_name = 'student_name'
     `);
-    
+
     if (!studentNameExists.rowCount) {
       console.log('  ⚠ Criando attendances.student_name...');
       await db.query(`ALTER TABLE attendances ADD COLUMN student_name TEXT`);
@@ -445,7 +445,7 @@ app.use(express.json());
 
     await db.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7)`);
     console.log('  ✓ attendances.longitude OK');
-    
+
     // Criar índices para attendances
     await db.query(`ALTER TABLE attendances DROP CONSTRAINT IF EXISTS attendances_class_id_student_id_key`);
     await db.query(`DROP INDEX IF EXISTS attendances_class_id_student_id_key`);
@@ -453,7 +453,7 @@ app.use(express.json());
 
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS attendances_class_session_student_idx ON attendances (class_session_id, student_id)`);
     console.log('  ✓ attendances_class_session_student_idx OK');
-    
+
     await db.query(`DROP INDEX IF EXISTS attendances_class_session_name_idx`);
     await db.query(`CREATE INDEX IF NOT EXISTS attendances_class_session_name_idx ON attendances (class_session_id, student_name)`);
     console.log('  ✓ attendances_class_session_name_idx ajustado para não-único (suporta homônimos)');
@@ -461,20 +461,20 @@ app.use(express.json());
     // Criar índices para attendance_records
     await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_session_idx ON attendance_records(session_id)`);
     console.log('  ✓ attendance_records_session_idx OK');
-    
+
     await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_professor_idx ON attendance_records(professor_id)`);
     console.log('  ✓ attendance_records_professor_idx OK');
-    
+
     await db.query(`CREATE INDEX IF NOT EXISTS attendance_records_date_idx ON attendance_records(attendance_date)`);
     console.log('  ✓ attendance_records_date_idx OK');
 
     // Criar índices para call_history
     await db.query(`CREATE INDEX IF NOT EXISTS call_history_class_idx ON call_history(class_id)`);
     console.log('  ✓ call_history_class_idx OK');
-    
+
     await db.query(`CREATE INDEX IF NOT EXISTS call_history_professor_idx ON call_history(professor_id)`);
     console.log('  ✓ call_history_professor_idx OK');
-    
+
     await db.query(`CREATE INDEX IF NOT EXISTS call_history_session_date_idx ON call_history(session_date)`);
     console.log('  ✓ call_history_session_date_idx OK');
 
@@ -633,7 +633,7 @@ app.use(express.json());
     } else if (legacyCount > 0) {
       console.log('  ⚠ Há presenças sem class_session_id, mas attendances.class_id não existe. Backfill ignorado.');
     }
-    
+
     attendanceSchemaCache = null;
     const schema = await getAttendanceSchema();
     console.log(`✅ DB initialized com sucesso! attendances.class_session_id=${schema.hasClassSessionId} attendances.class_id=${schema.hasClassId}`);
@@ -702,7 +702,7 @@ app.get('/ready', async (req, res) => {
 // Diagnóstico do banco (apenas admin)
 app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) => {
   if (!db) return res.json({ error: 'DB não conectado' });
-  
+
   try {
     // Verificar colunas da tabela attendances
     const attendancesSchema = await db.query(`
@@ -711,14 +711,14 @@ app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) =>
       WHERE table_name = 'attendances' 
       ORDER BY ordinal_position
     `);
-    
+
     // Verificar índices
     const indexes = await db.query(`
       SELECT indexname, indexdef 
       FROM pg_indexes 
       WHERE tablename = 'attendances'
     `);
-    
+
     // Contar registros
     const counts = await db.query(`
       SELECT 
@@ -728,7 +728,7 @@ app.get('/admin/db-check', ensureAuthenticated, ensureAdmin, async (req, res) =>
         (SELECT COUNT(*) FROM class_sessions) as sessions,
         (SELECT COUNT(*) FROM attendances) as attendances
     `);
-    
+
     res.json({
       status: 'ok',
       attendances_columns: attendancesSchema.rows,
@@ -914,7 +914,7 @@ app.get('/admin/db-manager/export', ensureAuthenticated, ensureAdmin, async (req
     const mappings = await db.query(
       `SELECT * FROM discord_mappings`
     );
-    
+
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="mercury-backup-ontem.json"');
     res.json({
@@ -933,11 +933,11 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   try {
     const { sessions, attendances, mappings } = req.body;
-    
+
     let sessionsImported = 0;
     let attendancesImported = 0;
     let mappingsImported = 0;
-    
+
     // 1. Mapeamentos Discord
     if (mappings && Array.isArray(mappings)) {
       for (const m of mappings) {
@@ -949,7 +949,7 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
         mappingsImported++;
       }
     }
-    
+
     // 2. Sessões de Aula
     if (sessions && Array.isArray(sessions)) {
       for (const s of sessions) {
@@ -959,13 +959,13 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (id) DO NOTHING
         `, [
-          s.id, s.class_id, s.start_time, s.end_time, s.active, 
+          s.id, s.class_id, s.start_time, s.end_time, s.active,
           s.geofence_latitude, s.geofence_longitude, s.geofence_radius_meters, s.geofence_source
         ]);
         sessionsImported++;
       }
     }
-    
+
     // 3. Presenças
     if (attendances && Array.isArray(attendances)) {
       for (const a of attendances) {
@@ -979,7 +979,7 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
         attendancesImported++;
       }
     }
-    
+
     // 4. Executa auto-sincronizador para resolver os student_id nulos que acabamos de importar
     try {
       await db.query(`
@@ -997,7 +997,7 @@ app.post('/admin/db-manager/import', ensureAuthenticated, ensureAdmin, express.j
     } catch (syncErr) {
       console.warn('Erro ao sincronizar presenças na importação:', syncErr.message);
     }
-    
+
     res.json({
       success: true,
       summary: `Importado: ${sessionsImported} sessões, ${attendancesImported} presenças, ${mappingsImported} mapeamentos.`,
@@ -1023,7 +1023,7 @@ app.post('/admin/db-manager/sync-mappings', ensureAuthenticated, ensureAdmin, as
       ON CONFLICT (discord_username) DO UPDATE SET real_name = EXCLUDED.real_name
       RETURNING discord_username;
     `);
-    
+
     res.json({
       success: true,
       message: `Criado/atualizado o vínculo de ${result.rowCount} alunos com sucesso com base na chamada de segunda!`
@@ -1915,13 +1915,13 @@ app.post('/class/start', ensureAuthenticated, ensureProfessor, express.urlencode
       [req.user.id, name, subjectId]
     );
     const classId = result.rows[0].id;
-    
+
     // Cria uma sessão automática para a sala recém-criada
     await db.query(
       `INSERT INTO class_sessions (class_id, start_time, active) VALUES ($1, NOW(), true)`,
       [classId]
     );
-    
+
     console.log(`[DEBUG] Sala criada: ${name} (ID: ${classId}) com sessão automática`);
     res.redirect(`/class/${classId}`);
   } catch (err) {
@@ -2341,6 +2341,10 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
 
     const classData = classRes.rows[0];
 
+    if (req.user.role === 'professor' && classData.professor_id !== req.user.id) {
+      return res.status(403).send('Acesso negado: Você não tem permissão para visualizar a sala de outro professor.');
+    }
+
     const sessionRes = await db.query(`SELECT * FROM class_sessions WHERE class_id = $1 ORDER BY start_time DESC LIMIT 1`, [classId]);
     const activeSession = sessionRes.rowCount ? sessionRes.rows[0] : null;
 
@@ -2348,13 +2352,13 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
     if (activeSession) {
       const membersQuery = schema.hasClassSessionId
         ? {
-            sql: `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-            params: [activeSession.id]
-          }
+          sql: `SELECT a.id, a.class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+          params: [activeSession.id]
+        }
         : {
-            sql: `SELECT a.id, NULL::INTEGER AS class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
-            params: [classId]
-          };
+          sql: `SELECT a.id, NULL::INTEGER AS class_session_id, a.student_id, a.student_name, a.login_at, a.status, u.username FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+          params: [classId]
+        };
 
       const attendances = await db.query(membersQuery.sql, membersQuery.params);
       members = attendances.rows;
@@ -2369,11 +2373,11 @@ app.get('/class/:id', ensureAuthenticated, async (req, res) => {
        WHERE s.class_id = $1
        GROUP BY s.id, s.start_time, s.end_time, s.active
        ORDER BY s.start_time DESC`,
-       [classId]
+      [classId]
     );
 
-    const statusBadge = activeSession && activeSession.active 
-      ? '<span class="status-badge active">🔴 Em Chamada</span>' 
+    const statusBadge = activeSession && activeSession.active
+      ? '<span class="status-badge active">🔴 Em Chamada</span>'
       : '<span class="status-badge inactive">⚫ Inativa</span>';
 
     const attendanceList = members.map(m => {
@@ -2731,6 +2735,11 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
+    if (req.user.role === 'professor') {
+      const checkRes = await db.query(`SELECT 1 FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+      if (!checkRes.rowCount) return res.status(403).json({ error: 'Acesso negado' });
+    }
+
     const schema = await getAttendanceSchema();
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.json([]);
@@ -2738,13 +2747,13 @@ app.get('/class/:id/attendees', ensureAuthenticated, async (req, res) => {
     const sessionId = sessionRes.rows[0].id;
     const attendeesQuery = schema.hasClassSessionId
       ? {
-          sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
-          params: [sessionId]
-        }
+        sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_session_id = $1 ORDER BY a.login_at ASC`,
+        params: [sessionId]
+      }
       : {
-          sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
-          params: [classId]
-        };
+        sql: `SELECT u.username, a.student_name, a.login_at, a.status FROM attendances a LEFT JOIN users u ON a.student_id = u.id WHERE a.class_id = $1 ORDER BY a.login_at ASC`,
+        params: [classId]
+      };
 
     const attendances = await db.query(attendeesQuery.sql, attendeesQuery.params);
     console.log('[DEBUG] /class/:id/attendees - sessionId:', sessionId, 'rowCount:', attendances.rowCount);
@@ -2894,6 +2903,10 @@ app.get('/class/:id/grade', ensureAuthenticated, ensureProfessor, async (req, re
     `, [classId]);
     if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
     const classData = classRes.rows[0];
+
+    if (req.user.role === 'professor' && classData.professor_id !== req.user.id) {
+      return res.status(403).send('Acesso negado: Esta sala pertence a outro professor.');
+    }
 
     res.send(`
 <!DOCTYPE html>
@@ -3112,6 +3125,11 @@ app.get('/api/class/:id/grade-data', ensureAuthenticated, ensureProfessor, async
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
   const classId = req.params.id;
   try {
+    if (req.user.role === 'professor') {
+      const checkRes = await db.query(`SELECT 1 FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+      if (!checkRes.rowCount) return res.status(403).json({ error: 'Acesso negado' });
+    }
+
     // 🛡️ Auto-matriculador de alunos (Self-Healer Dinâmico)
     // 1. Auto-matricula usando o student_id direto (se preenchido na tabela attendances)
     await db.query(`
@@ -3177,6 +3195,11 @@ app.get('/class/:id/grade/exportar', ensureAuthenticated, ensureProfessor, async
   if (!db) return res.status(500).send('DB não conectado');
   const classId = req.params.id;
   try {
+    if (req.user.role === 'professor') {
+      const checkRes = await db.query(`SELECT 1 FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+      if (!checkRes.rowCount) return res.status(403).send('Acesso negado');
+    }
+
     const classRes = await db.query('SELECT name FROM classes WHERE id = $1', [classId]);
     if (!classRes.rowCount) return res.status(404).send('Classe não encontrada');
     const className = classRes.rows[0].name;
@@ -3270,7 +3293,7 @@ app.get('/class/:id/grade/exportar', ensureAuthenticated, ensureProfessor, async
 });
 
 app.get('/historico-chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
-  res.send('<'+'!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Mercury Class | Histórico de Chamadas</title><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet"><style>${MERCURY_THEME}</style></head><body><div class="sidebar"><h2>✨ Mercury Class</h2><ul class="nav-menu"><li><a href="/dashboard">📊 Dashboard</a></li><li><a href="/classes">🏫 Salas de Aula</a></li><li><a href="/subjects">📚 Matérias</a></li><li><a href="/chamadas">📋 Chamadas</a></li>' + (req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : '') + '<li><a href="/logout">🚪 Sair</a></li></ul></div><div class="content"><div class="topbar"><h1>📚 Histórico de Chamadas</h1></div><div class="card"><h3 style="margin-bottom: 20px;">Filtrar Chamadas</h3><div class="filter-group"><div><label for="filterDate">Data</label><input id="filterDate" type="date" /></div><button onclick="loadHistorico()">🔍 Filtrar</button><button onclick="clearFilters()" style="background: var(--border-color);">✕ Limpar</button><a href="/api/chamadas/historico/exportar-todas" class="btn btn-export-all">📥 Baixar Todas as Chamadas</a></div></div><div class="card"><div id="historico-container"><div class="loading">Carregando histórico...</div></div></div><a href="/dashboard" class="back-link">← Voltar ao Dashboard</a></div><div id="detailsModal" class="modal"><div class="modal-content"><span class="close" onclick="closeModal()">&times;</span><h2 style="margin-bottom: 20px;">Detalhes da Chamada</h2><div id="modalBody"></div></div></div><script>let currentData = []; async function loadHistorico() { const container = document.getElementById("historico-container"); container.innerHTML = "<div class=\"loading\">Carregando histórico...</div>"; try { const resp = await fetch("/api/chamadas/historico"); if (!resp.ok) throw new Error("Falha ao carregar"); const data = await resp.json(); currentData = data; renderTable(data); } catch (err) { console.error("Erro:", err); container.innerHTML = "<div class=\"result-empty\"><p>❌ Erro ao carregar histórico</p></div>"; } } function renderTable(data) { const container = document.getElementById("historico-container"); if (!data || !data.length) { container.innerHTML = "<div class=\"result-empty\"><p>📭 Nenhuma chamada encontrada.</p></div>"; return; } let html = "<table><thead><tr><th>Sala</th><th>Data</th><th>Horário</th><th>Presentes</th><th>Ações</th></tr></thead><tbody>"; html += data.map(call => { const date = new Date(call.session_date).toLocaleDateString("pt-BR"); const time = new Date(call.session_start_time).toLocaleTimeString("pt-BR"); const count = call.total_present + "/" + call.total_students; return "<tr><td><strong>" + call.class_name + "</strong></td><td>" + date + "</td><td>" + time + "</td><td>" + count + "</td><td><div class=\"action-cell\"><button onclick=\"showDetails(" + call.id + ")\" style=\"padding: 6px 12px; font-size: 12px;\">📋 Ver</button><a href=\"/api/chamadas/historico/" + call.id + "/exportar?format=xlsx\" style=\"padding: 6px 12px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 4px; text-decoration: none;\">📥 Excel</a><button onclick=\"deleteCall(" + call.id + ")\" class=\"btn-danger\" style=\"padding: 6px 12px; font-size: 12px;\">🗑️ Excluir</button></div></td></tr>"; }).join(""); html += "</tbody></table>"; container.innerHTML = html; } async function showDetails(callId) { try { const resp = await fetch("/api/chamadas/historico/" + callId + "/detalhes"); if (!resp.ok) throw new Error("Falha ao carregar detalhes"); const data = await resp.json(); const call = data.call; const records = data.records; const modal = document.getElementById("detailsModal"); const modalBody = document.getElementById("modalBody"); let html = "<div><p><strong>Sala:</strong> " + call.class_name + "</p><p><strong>Data:</strong> " + new Date(call.session_date).toLocaleDateString("pt-BR") + "</p><p><strong>Horário:</strong> " + new Date(call.session_start_time).toLocaleTimeString("pt-BR") + "</p><p><strong>Presentes:</strong> " + call.total_present + " / " + call.total_students + "</p><hr style=\"border: none; border-top: 1px solid var(--border-color); margin: 20px 0;\"><h4 style=\"margin-bottom: 12px;\">Alunos Presentes:</h4><table style=\"width: 100%; font-size: 13px;\"><thead><tr style=\"border-bottom: 2px solid var(--border-color);\"><th style=\"text-align: left; padding: 8px;\">Nome</th><th style=\"text-align: left; padding: 8px;\">Horário</th></tr></thead><tbody>"; if (records && records.length) { html += records.map(r => "<tr style=\"border-bottom: 1px solid var(--border-color);\"><td style=\"padding: 8px;\">" + r.student_name + "</td><td style=\"padding: 8px;\">" + new Date(r.attendance_time).toLocaleTimeString("pt-BR") + "</td></tr>").join(""); } else { html += "<tr><td colspan=\"2\" style=\"padding: 8px; text-align: center; color: var(--text-muted);\">Sem registros</td></tr>"; } html += "</tbody></table></div>"; modalBody.innerHTML = html; modal.style.display = "block"; } catch (err) { console.error("Erro:", err); alert("Erro ao carregar detalhes"); } } async function deleteCall(callId) { if (!confirm("Deseja realmente excluir este histórico de chamada?")) return; try { const resp = await fetch("/api/chamadas/historico/" + callId, { method: "DELETE" }); if (resp.ok) { alert("Chamada excluída com sucesso"); loadHistorico(); } else { alert("Erro ao excluir chamada"); } } catch (err) { console.error("Erro:", err); alert("Erro ao excluir chamada"); } } function closeModal() { document.getElementById("detailsModal").style.display = "none"; } function clearFilters() { document.getElementById("filterDate").value = ""; loadHistorico(); } window.addEventListener("click", (e) => { const modal = document.getElementById("detailsModal"); if (e.target === modal) modal.style.display = "none"; }); window.addEventListener("DOMContentLoaded", loadHistorico);</script></body></html>');
+  res.send('<' + '!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Mercury Class | Histórico de Chamadas</title><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet"><style>${MERCURY_THEME}</style></head><body><div class="sidebar"><h2>✨ Mercury Class</h2><ul class="nav-menu"><li><a href="/dashboard">📊 Dashboard</a></li><li><a href="/classes">🏫 Salas de Aula</a></li><li><a href="/subjects">📚 Matérias</a></li><li><a href="/chamadas">📋 Chamadas</a></li>' + (req.user.role === 'admin' ? '<li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>' : '') + '<li><a href="/logout">🚪 Sair</a></li></ul></div><div class="content"><div class="topbar"><h1>📚 Histórico de Chamadas</h1></div><div class="card"><h3 style="margin-bottom: 20px;">Filtrar Chamadas</h3><div class="filter-group"><div><label for="filterDate">Data</label><input id="filterDate" type="date" /></div><button onclick="loadHistorico()">🔍 Filtrar</button><button onclick="clearFilters()" style="background: var(--border-color);">✕ Limpar</button><a href="/api/chamadas/historico/exportar-todas" class="btn btn-export-all">📥 Baixar Todas as Chamadas</a></div></div><div class="card"><div id="historico-container"><div class="loading">Carregando histórico...</div></div></div><a href="/dashboard" class="back-link">← Voltar ao Dashboard</a></div><div id="detailsModal" class="modal"><div class="modal-content"><span class="close" onclick="closeModal()">&times;</span><h2 style="margin-bottom: 20px;">Detalhes da Chamada</h2><div id="modalBody"></div></div></div><script>let currentData = []; async function loadHistorico() { const container = document.getElementById("historico-container"); container.innerHTML = "<div class=\"loading\">Carregando histórico...</div>"; try { const resp = await fetch("/api/chamadas/historico"); if (!resp.ok) throw new Error("Falha ao carregar"); const data = await resp.json(); currentData = data; renderTable(data); } catch (err) { console.error("Erro:", err); container.innerHTML = "<div class=\"result-empty\"><p>❌ Erro ao carregar histórico</p></div>"; } } function renderTable(data) { const container = document.getElementById("historico-container"); if (!data || !data.length) { container.innerHTML = "<div class=\"result-empty\"><p>📭 Nenhuma chamada encontrada.</p></div>"; return; } let html = "<table><thead><tr><th>Sala</th><th>Data</th><th>Horário</th><th>Presentes</th><th>Ações</th></tr></thead><tbody>"; html += data.map(call => { const date = new Date(call.session_date).toLocaleDateString("pt-BR"); const time = new Date(call.session_start_time).toLocaleTimeString("pt-BR"); const count = call.total_present + "/" + call.total_students; return "<tr><td><strong>" + call.class_name + "</strong></td><td>" + date + "</td><td>" + time + "</td><td>" + count + "</td><td><div class=\"action-cell\"><button onclick=\"showDetails(" + call.id + ")\" style=\"padding: 6px 12px; font-size: 12px;\">📋 Ver</button><a href=\"/api/chamadas/historico/" + call.id + "/exportar?format=xlsx\" style=\"padding: 6px 12px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 4px; text-decoration: none;\">📥 Excel</a><button onclick=\"deleteCall(" + call.id + ")\" class=\"btn-danger\" style=\"padding: 6px 12px; font-size: 12px;\">🗑️ Excluir</button></div></td></tr>"; }).join(""); html += "</tbody></table>"; container.innerHTML = html; } async function showDetails(callId) { try { const resp = await fetch("/api/chamadas/historico/" + callId + "/detalhes"); if (!resp.ok) throw new Error("Falha ao carregar detalhes"); const data = await resp.json(); const call = data.call; const records = data.records; const modal = document.getElementById("detailsModal"); const modalBody = document.getElementById("modalBody"); let html = "<div><p><strong>Sala:</strong> " + call.class_name + "</p><p><strong>Data:</strong> " + new Date(call.session_date).toLocaleDateString("pt-BR") + "</p><p><strong>Horário:</strong> " + new Date(call.session_start_time).toLocaleTimeString("pt-BR") + "</p><p><strong>Presentes:</strong> " + call.total_present + " / " + call.total_students + "</p><hr style=\"border: none; border-top: 1px solid var(--border-color); margin: 20px 0;\"><h4 style=\"margin-bottom: 12px;\">Alunos Presentes:</h4><table style=\"width: 100%; font-size: 13px;\"><thead><tr style=\"border-bottom: 2px solid var(--border-color);\"><th style=\"text-align: left; padding: 8px;\">Nome</th><th style=\"text-align: left; padding: 8px;\">Horário</th></tr></thead><tbody>"; if (records && records.length) { html += records.map(r => "<tr style=\"border-bottom: 1px solid var(--border-color);\"><td style=\"padding: 8px;\">" + r.student_name + "</td><td style=\"padding: 8px;\">" + new Date(r.attendance_time).toLocaleTimeString("pt-BR") + "</td></tr>").join(""); } else { html += "<tr><td colspan=\"2\" style=\"padding: 8px; text-align: center; color: var(--text-muted);\">Sem registros</td></tr>"; } html += "</tbody></table></div>"; modalBody.innerHTML = html; modal.style.display = "block"; } catch (err) { console.error("Erro:", err); alert("Erro ao carregar detalhes"); } } async function deleteCall(callId) { if (!confirm("Deseja realmente excluir este histórico de chamada?")) return; try { const resp = await fetch("/api/chamadas/historico/" + callId, { method: "DELETE" }); if (resp.ok) { alert("Chamada excluída com sucesso"); loadHistorico(); } else { alert("Erro ao excluir chamada"); } } catch (err) { console.error("Erro:", err); alert("Erro ao excluir chamada"); } } function closeModal() { document.getElementById("detailsModal").style.display = "none"; } function clearFilters() { document.getElementById("filterDate").value = ""; loadHistorico(); } window.addEventListener("click", (e) => { const modal = document.getElementById("detailsModal"); if (e.target === modal) modal.style.display = "none"; }); window.addEventListener("DOMContentLoaded", loadHistorico);</script></body></html>');
 });
 
 app.get('/chamadas', ensureAuthenticated, ensureProfessor, (req, res) => {
@@ -3404,7 +3427,7 @@ app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) 
     if (schema.hasClassId) {
       sessions = req.user.role === 'admin'
         ? await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -3435,9 +3458,9 @@ app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) 
             ) x
             ORDER BY x.start_time DESC
             LIMIT 120`
-          )
+        )
         : await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -3470,26 +3493,26 @@ app.get('/chamadas/api', ensureAuthenticated, ensureProfessor, async (req, res) 
             ) x
             ORDER BY x.start_time DESC
             LIMIT 120`,
-            [req.user.id]
-          );
+          [req.user.id]
+        );
     } else {
       sessions = req.user.role === 'admin'
         ? await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              ORDER BY s.start_time DESC
              LIMIT 120`
-          )
+        )
         : await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              WHERE c.professor_id = $1
              ORDER BY s.start_time DESC
              LIMIT 120`,
-            [req.user.id]
-          );
+          [req.user.id]
+        );
     }
 
     console.log(`[DEBUG] /chamadas/api - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões`);
@@ -3510,7 +3533,7 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
     if (schema.hasClassId) {
       sessions = req.user.role === 'admin'
         ? await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -3542,10 +3565,10 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
               GROUP BY c.id, c.name, DATE(a.login_at)
             ) x
             ORDER BY x.start_time DESC`,
-            [date]
-          )
+          [date]
+        )
         : await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -3579,26 +3602,26 @@ app.get('/chamadas/api/:date', ensureAuthenticated, ensureProfessor, async (req,
               GROUP BY c.id, c.name, DATE(a.login_at)
             ) x
             ORDER BY x.start_time DESC`,
-            [req.user.id, date]
-          );
+          [req.user.id, date]
+        );
     } else {
       sessions = req.user.role === 'admin'
         ? await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              WHERE DATE(s.start_time) = $1
              ORDER BY s.start_time DESC`,
-            [date]
-          )
+          [date]
+        )
         : await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              WHERE c.professor_id = $1 AND DATE(s.start_time) = $2
              ORDER BY s.start_time DESC`,
-            [req.user.id, date]
-          );
+          [req.user.id, date]
+        );
     }
 
     console.log(`[DEBUG] /chamadas/api/${date} - Usuário ${req.user.id} (${req.user.role}) carregou ${sessions.rows.length} sessões para ${date}`);
@@ -3653,22 +3676,22 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
 
       exportQuery = schema.hasClassSessionId
         ? {
-            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
                   FROM attendances a
                   LEFT JOIN users u ON a.student_id = u.id
                   WHERE a.class_session_id = $1
                      OR (a.class_session_id IS NULL AND a.class_id = $2 AND DATE(a.login_at) = DATE($3::timestamptz))
                   ORDER BY a.login_at ASC`,
-            params: [sessionId, sessionData.class_id, sessionData.start_time]
-          }
+          params: [sessionId, sessionData.class_id, sessionData.start_time]
+        }
         : {
-            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+          sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
                   FROM attendances a
                   LEFT JOIN users u ON a.student_id = u.id
                   WHERE a.class_id = $1
                   ORDER BY a.login_at ASC`,
-            params: [sessionData.class_id]
-          };
+          params: [sessionData.class_id]
+        };
     }
 
     const attendances = await db.query(exportQuery.sql, exportQuery.params);
@@ -3687,13 +3710,13 @@ app.get('/chamadas/:sessionId/export', ensureAuthenticated, ensureProfessor, asy
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${exportFileDate || 'sem-data'}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g, '_')}-${exportFileDate || 'sem-data'}.xlsx"`);
       res.send(buffer);
     } else {
       const csv = ['Nome;Discord;Data/Hora', ...rows.map(r => `${r.student_name};${r.discord_username};${new Date(r.login_at).toLocaleString()}`)].join('\n');
 
       res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g,'_')}-${exportFileDate || 'sem-data'}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${sessionData.name.replace(/\s/g, '_')}-${exportFileDate || 'sem-data'}.csv"`);
       res.send(csv);
     }
   } catch (err) {
@@ -3814,7 +3837,7 @@ app.get('/classes', ensureAuthenticated, async (req, res) => {
         WHERE cs.active = true
         ORDER BY cs.start_time DESC
       `);
-      
+
       const classList = classes.rows.map(c => `<li>
         <div>
           <strong>${c.name}</strong>
@@ -3873,6 +3896,11 @@ app.post('/class/:id/end', ensureAuthenticated, ensureProfessor, async (req, res
   if (!db) return res.send('Erro: DB não conectado.');
   const classId = req.params.id;
   try {
+    if (req.user.role === 'professor') {
+      const checkRes = await db.query(`SELECT 1 FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+      if (!checkRes.rowCount) return res.status(403).send('Acesso negado');
+    }
+
     await db.query(`UPDATE class_sessions SET active = false, end_time = NOW() WHERE class_id = $1 AND active = true`, [classId]);
     res.redirect('/classes');
   } catch (err) {
@@ -3889,6 +3917,11 @@ app.post('/class/:id/mark', ensureAuthenticated, ensureProfessor, express.urlenc
   if (!fullName) return res.status(400).json({ success: false, error: 'Informe o nome completo do aluno para marcar presença.' });
 
   try {
+    if (req.user.role === 'professor') {
+      const checkRes = await db.query(`SELECT 1 FROM classes WHERE id = $1 AND professor_id = $2`, [classId, req.user.id]);
+      if (!checkRes.rowCount) return res.status(403).json({ success: false, error: 'Acesso negado' });
+    }
+
     const schema = await getAttendanceSchema();
     const sessionRes = await db.query(`SELECT id FROM class_sessions WHERE class_id = $1 AND active = true LIMIT 1`, [classId]);
     if (!sessionRes.rowCount) return res.status(400).json({ success: false, error: 'Não há chamada ativa para esta sala.' });
@@ -4075,7 +4108,7 @@ app.post('/admin/class/:id/delete', ensureAuthenticated, ensureAdmin, async (req
     await db.query('COMMIT');
     res.redirect('/classes');
   } catch (err) {
-    try { await db.query('ROLLBACK'); } catch (_) {}
+    try { await db.query('ROLLBACK'); } catch (_) { }
     console.error('Erro ao excluir sala:', {
       message: err.message,
       code: err.code,
@@ -4111,7 +4144,7 @@ app.get('/logout', ensureAuthenticated, (req, res) => {
 // GET: Listar histórico de chamadas
 app.get('/api/chamadas/historico', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  
+
   try {
     const query = req.user.role === 'admin'
       ? `SELECT 
@@ -4147,10 +4180,10 @@ app.get('/api/chamadas/historico', ensureAuthenticated, ensureProfessor, async (
          WHERE ch.professor_id = $1
          ORDER BY ch.session_date DESC
          LIMIT 500`;
-    
+
     const params = req.user.role === 'admin' ? [] : [req.user.id];
     const result = await db.query(query, params);
-    
+
     res.json(result.rows);
   } catch (err) {
     console.error('Erro ao listar histórico:', err);
@@ -4161,17 +4194,17 @@ app.get('/api/chamadas/historico', ensureAuthenticated, ensureProfessor, async (
 // GET: Exportar todas as chamadas em um ZIP contendo Excels das sessões reais do professor/admin
 app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).send('Erro: DB não conectado');
-  
+
   try {
     const schema = await getAttendanceSchema();
     const professorId = req.user.id;
     const isAdmin = req.user.role === 'admin';
-    
+
     let sessions;
     if (schema.hasClassId) {
       sessions = isAdmin
         ? await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -4201,9 +4234,9 @@ app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, as
               GROUP BY c.id, c.name, DATE(a.login_at)
             ) x
             ORDER BY x.start_time DESC`
-          )
+        )
         : await db.query(
-            `
+          `
             SELECT * FROM (
               SELECT
                 s.id::text AS session_id,
@@ -4235,44 +4268,44 @@ app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, as
               GROUP BY c.id, c.name, DATE(a.login_at)
             ) x
             ORDER BY x.start_time DESC`,
-            [professorId]
-          );
+          [professorId]
+        );
     } else {
       sessions = isAdmin
         ? await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              ORDER BY s.start_time DESC`
-          )
+        )
         : await db.query(
-            `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
+          `SELECT s.id::text AS session_id, c.id AS class_id, c.name, s.active, s.start_time, s.end_time, false AS is_legacy
              FROM class_sessions s
              JOIN classes c ON c.id = s.class_id
              WHERE c.professor_id = $1
              ORDER BY s.start_time DESC`,
-            [professorId]
-          );
+          [professorId]
+        );
     }
-    
+
     if (!sessions.rowCount) {
       return res.status(404).send('Nenhuma chamada encontrada para exportar.');
     }
-    
+
     const JSZip = require('jszip');
     const zip = new JSZip();
-    
+
     function sanitizePathPart(name) {
       return (name || '').replace(/[\/\\?%*:|"<>]/g, '_').trim();
     }
-    
+
     // Para cada sessão, obter presenças e colocar no ZIP
     for (const session of sessions.rows) {
       const sessionId = session.session_id;
       const legacyMatch = /^legacy-(\d+)-(\d{4}-\d{2}-\d{2})$/.exec(sessionId);
       let exportQuery;
       let exportFileDate = session.start_time ? new Date(session.start_time).toISOString().split('T')[0] : 'sem-data';
-      
+
       if (legacyMatch) {
         const legacyClassId = parseInt(legacyMatch[1], 10);
         const legacyDate = legacyMatch[2];
@@ -4289,52 +4322,52 @@ app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, as
       } else {
         exportQuery = schema.hasClassSessionId
           ? {
-              sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
                     FROM attendances a
                     LEFT JOIN users u ON a.student_id = u.id
                     WHERE a.class_session_id = $1
                        OR (a.class_session_id IS NULL AND a.class_id = $2 AND DATE(a.login_at) = DATE($3::timestamptz))
                     ORDER BY a.login_at ASC`,
-              params: [sessionId, session.class_id, session.start_time]
-            }
+            params: [sessionId, session.class_id, session.start_time]
+          }
           : {
-              sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
+            sql: `SELECT COALESCE(a.student_name,u.username) as student_name, u.username as discord_username, a.login_at
                     FROM attendances a
                     LEFT JOIN users u ON a.student_id = u.id
                     WHERE a.class_id = $1
                     ORDER BY a.login_at ASC`,
-              params: [session.class_id]
-            };
+            params: [session.class_id]
+          };
       }
-      
+
       const attendancesResult = await db.query(exportQuery.sql, exportQuery.params);
       const rows = attendancesResult.rows;
-      
+
       const sheetData = rows.map(r => ({
         Nome: r.student_name,
         Discord: r.discord_username || '',
         'Data/Hora': new Date(r.login_at).toLocaleString('pt-BR')
       }));
-      
+
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(sheetData);
       worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }];
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamadas');
-      
+
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      
+
       const folderName = sanitizePathPart(session.name);
       const fileName = `chamada-${sanitizePathPart(session.name)}-${exportFileDate}.xlsx`;
-      
+
       zip.file(`${folderName}/${fileName}`, buffer);
     }
-    
+
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    
+
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="historico-chamadas-sessoes.zip"');
     res.send(zipBuffer);
-    
+
   } catch (err) {
     console.error('Erro ao exportar todas as chamadas:', err);
     res.status(500).send('Erro ao exportar todas as chamadas');
@@ -4344,23 +4377,23 @@ app.get('/api/chamadas/exportar-todas', ensureAuthenticated, ensureProfessor, as
 // GET: Detalhes de uma chamada (com lista de alunos)
 app.get('/api/chamadas/historico/:callId/detalhes', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  
+
   try {
     const callId = req.params.callId;
-    
+
     const callQuery = req.user.role === 'admin'
       ? `SELECT * FROM call_history WHERE id = $1`
       : `SELECT * FROM call_history WHERE id = $1 AND professor_id = $2`;
-    
+
     const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
     const callResult = await db.query(callQuery, callParams);
-    
+
     if (!callResult.rowCount) {
       return res.status(404).json({ error: 'Chamada não encontrada' });
     }
-    
+
     const call = callResult.rows[0];
-    
+
     // Buscar registros de presença
     const recordsQuery = `
       SELECT 
@@ -4373,9 +4406,9 @@ app.get('/api/chamadas/historico/:callId/detalhes', ensureAuthenticated, ensureP
       WHERE ar.session_id = $1
       ORDER BY ar.attendance_time ASC
     `;
-    
+
     const recordsResult = await db.query(recordsQuery, [call.session_id]);
-    
+
     res.json({
       call: call,
       records: recordsResult.rows
@@ -4389,21 +4422,21 @@ app.get('/api/chamadas/historico/:callId/detalhes', ensureAuthenticated, ensureP
 // POST: Registrar nova chamada no histórico
 app.post('/api/chamadas/historico/registrar', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  
+
   try {
     const { session_id, class_id, session_name, session_date, total_students, total_present } = req.body;
-    
+
     if (!session_id || !class_id || !session_name || !session_date) {
       return res.status(400).json({ error: 'Parâmetros obrigatórios faltando' });
     }
-    
+
     const result = await db.query(`
       INSERT INTO call_history 
       (class_id, session_id, professor_id, session_name, session_date, session_start_time, total_students, total_present)
       VALUES ($1, $2, $3, $4, $5::date, NOW(), $6, $7)
       RETURNING id
     `, [class_id, session_id, req.user.id, session_name, session_date, total_students || 0, total_present || 0]);
-    
+
     res.json({ success: true, call_id: result.rows[0].id });
   } catch (err) {
     console.error('Erro ao registrar chamada:', err);
@@ -4414,29 +4447,29 @@ app.post('/api/chamadas/historico/registrar', ensureAuthenticated, ensureProfess
 // POST: Registrar presença de aluno no histórico
 app.post('/api/chamadas/historico/:callId/registrar-aluno', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  
+
   try {
     const callId = req.params.callId;
     const { student_name, student_id, attendance_date } = req.body;
-    
+
     if (!student_name || !attendance_date) {
       return res.status(400).json({ error: 'Parâmetros obrigatórios faltando' });
     }
-    
+
     // Buscar dados da chamada
     const callQuery = req.user.role === 'admin'
       ? `SELECT * FROM call_history WHERE id = $1`
       : `SELECT * FROM call_history WHERE id = $1 AND professor_id = $2`;
-    
+
     const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
     const callResult = await db.query(callQuery, callParams);
-    
+
     if (!callResult.rowCount) {
       return res.status(404).json({ error: 'Chamada não encontrada' });
     }
-    
+
     const call = callResult.rows[0];
-    
+
     // Registrar presença
     const result = await db.query(`
       INSERT INTO attendance_records 
@@ -4444,7 +4477,7 @@ app.post('/api/chamadas/historico/:callId/registrar-aluno', ensureAuthenticated,
       VALUES ($1, $2, $3, $4, $5, $6::date, NOW())
       RETURNING id
     `, [call.session_id, call.class_id, req.user.id, student_name, student_id, attendance_date]);
-    
+
     res.json({ success: true, record_id: result.rows[0].id });
   } catch (err) {
     console.error('Erro ao registrar aluno:', err);
@@ -4455,26 +4488,26 @@ app.post('/api/chamadas/historico/:callId/registrar-aluno', ensureAuthenticated,
 // GET: Exportar chamada em Excel
 app.get('/api/chamadas/historico/:callId/exportar', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).send('Erro: DB não conectado');
-  
+
   try {
     const callId = req.params.callId;
     const format = req.query.format || 'xlsx';
-    
+
     const callQuery = req.user.role === 'admin'
       ? `SELECT ch.*, c.name as class_name FROM call_history ch 
          JOIN classes c ON c.id = ch.class_id WHERE ch.id = $1`
       : `SELECT ch.*, c.name as class_name FROM call_history ch 
          JOIN classes c ON c.id = ch.class_id WHERE ch.id = $1 AND ch.professor_id = $2`;
-    
+
     const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
     const callResult = await db.query(callQuery, callParams);
-    
+
     if (!callResult.rowCount) {
       return res.status(404).send('Chamada não encontrada');
     }
-    
+
     const call = callResult.rows[0];
-    
+
     // Buscar registros de presença
     const recordsResult = await db.query(`
       SELECT 
@@ -4486,9 +4519,9 @@ app.get('/api/chamadas/historico/:callId/exportar', ensureAuthenticated, ensureP
       WHERE ar.session_id = $1
       ORDER BY ar.attendance_time ASC
     `, [call.session_id]);
-    
+
     const rows = recordsResult.rows;
-    
+
     if (format === 'xlsx') {
       const sheetData = rows.map(r => ({
         Nome: r.student_name,
@@ -4496,24 +4529,24 @@ app.get('/api/chamadas/historico/:callId/exportar', ensureAuthenticated, ensureP
         'Data': new Date(r.attendance_date).toLocaleDateString('pt-BR'),
         'Horário': new Date(r.attendance_time).toLocaleTimeString('pt-BR')
       }));
-      
+
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(sheetData);
       worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Chamada');
-      
+
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      
+
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g,'_')}-${call.session_date}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g, '_')}-${call.session_date}.xlsx"`);
       res.send(buffer);
     } else {
-      const csv = ['Nome,ID,Data,Horário', 
+      const csv = ['Nome,ID,Data,Horário',
         ...rows.map(r => `${r.student_name},${r.student_id || ''},${new Date(r.attendance_date).toLocaleDateString('pt-BR')},${new Date(r.attendance_time).toLocaleTimeString('pt-BR')}`)
       ].join('\n');
-      
+
       res.setHeader('Content-Type', 'text/csv; charset=UTF-8');
-      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g,'_')}-${call.session_date}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="chamada-${call.class_name.replace(/\s/g, '_')}-${call.session_date}.csv"`);
       res.send(csv);
     }
   } catch (err) {
@@ -4525,27 +4558,27 @@ app.get('/api/chamadas/historico/:callId/exportar', ensureAuthenticated, ensureP
 // GET: Deletar chamada do histórico
 app.delete('/api/chamadas/historico/:callId', ensureAuthenticated, ensureProfessor, async (req, res) => {
   if (!db) return res.status(500).json({ error: 'DB não conectado' });
-  
+
   try {
     const callId = req.params.callId;
-    
+
     const callQuery = req.user.role === 'admin'
       ? `SELECT id FROM call_history WHERE id = $1`
       : `SELECT id FROM call_history WHERE id = $1 AND professor_id = $2`;
-    
+
     const callParams = req.user.role === 'admin' ? [callId] : [callId, req.user.id];
     const callResult = await db.query(callQuery, callParams);
-    
+
     if (!callResult.rowCount) {
       return res.status(404).json({ error: 'Chamada não encontrada' });
     }
-    
+
     await db.query('BEGIN');
     try {
       await db.query(`DELETE FROM attendance_records WHERE session_id = (SELECT session_id FROM call_history WHERE id = $1)`, [callId]);
       await db.query(`DELETE FROM call_history WHERE id = $1`, [callId]);
       await db.query('COMMIT');
-      
+
       res.json({ success: true });
     } catch (err) {
       await db.query('ROLLBACK');
