@@ -1219,36 +1219,35 @@ app.get('/dashboard', async (req, res) => {
           JOIN class_sessions cs ON cs.id = a.class_session_id
           WHERE a.student_id = $1
         ),
-        subject_sessions AS (
-          SELECT c.subject_id, COALESCE(s.name, 'Sem matéria') AS subject_name, cs.id AS session_id
+        class_stats AS (
+          SELECT c.id AS class_id, c.name AS class_name, cs.id AS session_id
           FROM class_sessions cs
           JOIN classes c ON c.id = cs.class_id
-          LEFT JOIN subjects s ON s.id = c.subject_id
           WHERE cs.class_id IN (SELECT class_id FROM student_classes)
         ),
         student_presence AS (
-          SELECT c.subject_id, a.class_session_id
+          SELECT c.id AS class_id, a.class_session_id
           FROM attendances a
           JOIN class_sessions cs ON cs.id = a.class_session_id
           JOIN classes c ON c.id = cs.class_id
           WHERE a.student_id = $1
         )
         SELECT
-          ss.subject_id,
-          ss.subject_name,
+          ss.class_id,
+          ss.class_name,
           COUNT(DISTINCT ss.session_id)::int AS total_sessions,
           COUNT(DISTINCT sp.class_session_id)::int AS attended_sessions
-        FROM subject_sessions ss
+        FROM class_stats ss
         LEFT JOIN student_presence sp
           ON sp.class_session_id = ss.session_id
-         AND sp.subject_id IS NOT DISTINCT FROM ss.subject_id
-        GROUP BY ss.subject_id, ss.subject_name
-        ORDER BY ss.subject_name ASC
+         AND sp.class_id = ss.class_id
+        GROUP BY ss.class_id, ss.class_name
+        ORDER BY ss.class_name ASC
       `, [req.user.id]);
 
-      const subjectRows = subjects.rows.map(r => ({
-        subject_id: r.subject_id,
-        subject_name: r.subject_name,
+      const classRows = subjects.rows.map(r => ({
+        class_id: r.class_id,
+        class_name: r.class_name,
         total_sessions: Number(r.total_sessions) || 0,
         attended_sessions: Number(r.attended_sessions) || 0
       }));
@@ -1258,46 +1257,37 @@ app.get('/dashboard', async (req, res) => {
         [req.user.id]
       );
       const totalAttended = Number(totalAttendedRes.rows[0]?.total || 0);
-      const totalAvailable = subjectRows.reduce((sum, s) => sum + s.total_sessions, 0);
+      const totalAvailable = classRows.reduce((sum, s) => sum + s.total_sessions, 0);
       const overallFrequency = totalAvailable > 0 ? ((totalAttended / totalAvailable) * 100) : 0;
 
-      const selectedParam = typeof req.query.subject === 'string' ? req.query.subject : '';
-      const selectedRow = subjectRows.find(s => {
-        const key = s.subject_id === null ? 'none' : String(s.subject_id);
-        return key === selectedParam;
-      }) || subjectRows[0] || null;
+      const selectedParam = typeof req.query.class === 'string' ? req.query.class : '';
+      const selectedRow = classRows.find(s => String(s.class_id) === selectedParam) || classRows[0] || null;
 
       let historySql = `
         SELECT
-          COALESCE(s.name, 'Sem matéria') AS subject_name,
           c.name AS class_name,
           cs.start_time,
           a.login_at
         FROM attendances a
         JOIN class_sessions cs ON cs.id = a.class_session_id
         JOIN classes c ON c.id = cs.class_id
-        LEFT JOIN subjects s ON s.id = c.subject_id
         WHERE a.student_id = $1
       `;
       const historyParams = [req.user.id];
       if (selectedRow) {
-        if (selectedRow.subject_id === null) {
-          historySql += ` AND c.subject_id IS NULL`;
-        } else {
-          historyParams.push(selectedRow.subject_id);
-          historySql += ` AND c.subject_id = $2`;
-        }
+        historyParams.push(selectedRow.class_id);
+        historySql += ` AND c.id = $2`;
       }
       historySql += ` ORDER BY cs.start_time DESC LIMIT 50`;
       const history = await db.query(historySql, historyParams);
 
-      const subjectMenu = subjectRows.map(s => {
-        const key = s.subject_id === null ? 'none' : String(s.subject_id);
+      const classMenu = classRows.map(s => {
+        const key = String(s.class_id);
         const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
-        const isActive = selectedRow && ((selectedRow.subject_id === null && s.subject_id === null) || selectedRow.subject_id === s.subject_id);
+        const isActive = selectedRow && selectedRow.class_id === s.class_id;
         return `<li>
-          <a href="/dashboard?subject=${key}" class="${isActive ? 'active-subject' : ''}">
-            <span>📘 ${s.subject_name}</span>
+          <a href="/dashboard?class=${key}" class="${isActive ? 'active-subject' : ''}">
+            <span>🏫 ${s.class_name}</span>
             <strong>${pct}%</strong>
           </a>
         </li>`;
@@ -1310,7 +1300,6 @@ app.get('/dashboard', async (req, res) => {
       const historyList = history.rows.map(h => `<li>
         <div>
           <strong>${h.class_name}</strong>
-          <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">📘 ${h.subject_name}</div>
         </div>
         <div style="text-align:right; color: var(--text-muted); font-size: 12px;">
           <div>🕒 Aula: ${new Date(h.start_time).toLocaleString('pt-BR')}</div>
@@ -1350,8 +1339,8 @@ app.get('/dashboard', async (req, res) => {
   <div class="content">
     <div class="topbar">
       <div>
-        <h1>Minha Frequência por Matéria</h1>
-        <p style="color:var(--text-muted); margin-top:4px;">Acompanhe seu desempenho em cada disciplina.</p>
+        <h1>Minha Frequência por Sala de Aula</h1>
+        <p style="color:var(--text-muted); margin-top:4px;">Acompanhe seu desempenho em cada sala que você participa.</p>
       </div>
       <button class="theme-btn" onclick="toggleTheme()">🌙</button>
     </div>
@@ -1367,24 +1356,24 @@ app.get('/dashboard', async (req, res) => {
       </div>
       <div class="card metric">
         <h2>${selectedPct}%</h2>
-        <p>Frequência na Matéria Selecionada</p>
+        <p>Frequência na Sala Selecionada</p>
       </div>
     </div>
 
     <div class="layout">
       <div class="card" id="materias">
-        <h2 style="margin-bottom:14px;">📚 Menu de Matérias</h2>
-        <ul class="subject-menu">${subjectMenu || '<li style="color:var(--text-muted);">Sem matérias com presença ainda.</li>'}</ul>
+        <h2 style="margin-bottom:14px;">🏫 Menu de Salas</h2>
+        <ul class="subject-menu">${classMenu || '<li style="color:var(--text-muted);">Sem salas com presença ainda.</li>'}</ul>
       </div>
 
       <div>
         <div class="card" style="margin-bottom:16px;">
-          <h2 style="margin-bottom:10px;">📈 Frequência por Matéria</h2>
+          <h2 style="margin-bottom:10px;">📈 Frequência por Sala</h2>
           <canvas id="freqChart" height="130"></canvas>
         </div>
         <div class="card">
-          <h2 style="margin-bottom:10px;">🧾 Histórico (${selectedRow ? selectedRow.subject_name : 'Sem matéria'})</h2>
-          <ul class="history">${historyList || '<li style="color:var(--text-muted);">Nenhuma presença registrada para esta matéria.</li>'}</ul>
+          <h2 style="margin-bottom:10px;">🧾 Histórico (${selectedRow ? selectedRow.class_name : 'Sem sala'})</h2>
+          <ul class="history">${historyList || '<li style="color:var(--text-muted);">Nenhuma presença registrada para esta sala.</li>'}</ul>
         </div>
       </div>
     </div>
@@ -1399,8 +1388,8 @@ if (localStorage.getItem('theme') === 'light') {
   document.documentElement.classList.add('light');
 }
 
-const labels = ${JSON.stringify(subjectRows.map(s => s.subject_name))};
-const dataPct = ${JSON.stringify(subjectRows.map(s => s.total_sessions > 0 ? Number(((s.attended_sessions / s.total_sessions) * 100).toFixed(1)) : 0))};
+const labels = ${JSON.stringify(classRows.map(s => s.class_name))};
+const dataPct = ${JSON.stringify(classRows.map(s => s.total_sessions > 0 ? Number(((s.attended_sessions / s.total_sessions) * 100).toFixed(1)) : 0))};
 
 const ctx = document.getElementById('freqChart');
 if (ctx) {
