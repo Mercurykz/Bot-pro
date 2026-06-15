@@ -1629,15 +1629,15 @@ if (ctx) {
       `).join('');
     } else {
       const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
-        \`SELECT c.id, c.name, u.username as professor_name, MAX(s.start_time) as last_start_time
+        `SELECT c.id, c.name, u.username as professor_name, MAX(s.start_time) as last_start_time
          FROM class_sessions s
          JOIN classes c ON c.id = s.class_id
          JOIN users u ON u.id = c.professor_id
          WHERE s.active = true
          GROUP BY c.id, c.name, u.username
-         ORDER BY last_start_time DESC\`)
+         ORDER BY last_start_time DESC`)
         : null;
-      classesHtml = (classesDisponiveis?.rows || []).map(c => \`<li>\${c.name} (Prof. \${c.professor_name}) <a href="/class/\${c.id}">Entrar</a></li>\`).join('');
+      classesHtml = (classesDisponiveis?.rows || []).map(c => `<li>${c.name} (Prof. ${c.professor_name}) <a href="/class/${c.id}">Entrar</a></li>`).join('');
       classForm = '';
     }
 
@@ -1708,27 +1708,27 @@ if (ctx) {
   <div class="topbar">
     <div>
       <h1>Bom dia, ${req.user.role === 'professor' ? 'Professor(a) ' : ''}${req.user.username}!</h1>
-      <p style="color: var(--text-muted); margin-top: 5px;">${req.user.role === 'professor' ? \`Hoje você possui \${activeRooms.size} salas ativas e \${chamadasMes} presenças registradas no mês.\` : 'Gerencie o sistema de presenças'}</p>
+      <p style="color: var(--text-muted); margin-top: 5px;">${req.user.role === 'professor' ? `Hoje você possui ${activeRooms.size} salas ativas e ${chamadasMes} presenças registradas no mês.` : 'Gerencie o sistema de presenças'}</p>
     </div>
     <button class="theme-btn" onclick="toggleTheme()">🌙</button>
   </div>
 
-  ${req.user.role === 'professor' ? \`
+  ${req.user.role === 'professor' ? `
   <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important; margin-bottom: 24px;">
     <div class="card metric" style="border-top: 4px solid var(--primary) !important;">
-      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">🏫 \${activeRooms.size}</h2>
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">🏫 ${activeRooms.size}</h2>
       <p style="color: var(--text-muted);">Salas Ativas</p>
     </div>
     <div class="card metric" style="border-top: 4px solid #8b5cf6 !important;">
-      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">👨‍🎓 \${totalAlunos}</h2>
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">👨‍🎓 ${totalAlunos}</h2>
       <p style="color: var(--text-muted);">Alunos na Plataforma</p>
     </div>
     <div class="card metric" style="border-top: 4px solid #10b981 !important;">
-      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📊 \${taxaMedia}%</h2>
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📊 ${taxaMedia}%</h2>
       <p style="color: var(--text-muted);">Frequência Média</p>
     </div>
     <div class="card metric" style="border-top: 4px solid #f59e0b !important;">
-      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📋 \${chamadasMes}</h2>
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📋 ${chamadasMes}</h2>
       <p style="color: var(--text-muted);">Chamadas no Mês</p>
     </div>
   </div>
@@ -1737,7 +1737,7 @@ if (ctx) {
     <div style="display: flex; flex-direction: column; gap: 24px;">
       <div class="card" style="margin: 0 !important;">
         <h2 style="margin-bottom: 16px;">⚡ Chamada Rápida</h2>
-        \${chamadasCards || '<p style="color:var(--text-muted);">Nenhuma sala cadastrada. Crie uma nova matéria.</p>'}
+        ${chamadasCards || '<p style="color:var(--text-muted);">Nenhuma sala cadastrada. Crie uma nova matéria.</p>'}
       </div>
 
       <div class="chart-container" style="margin: 0 !important;">
@@ -1749,38 +1749,38 @@ if (ctx) {
     <div style="display: flex; flex-direction: column; gap: 24px;">
       <div class="card" style="margin: 0 !important; border-top: 4px solid #f59e0b !important;">
         <h2 style="margin-bottom: 16px; color: #f59e0b;">⚠️ Alunos em Risco</h2>
-        \${alunosRiscoHtml || '<p style="color:var(--text-muted); font-size:13px;">Todos os alunos estão com boa frequência.</p>'}
+        ${alunosRiscoHtml || '<p style="color:var(--text-muted); font-size:13px;">Todos os alunos estão com boa frequência.</p>'}
       </div>
 
       <div class="card" style="margin: 0 !important;">
         <h2 style="margin-bottom: 16px;">🧾 Últimas Chamadas</h2>
-        \${recentCallsHtml || '<p style="color:var(--text-muted); font-size:13px;">Nenhuma chamada recente.</p>'}
+        ${recentCallsHtml || '<p style="color:var(--text-muted); font-size:13px;">Nenhuma chamada recente.</p>'}
       </div>
     </div>
   </div>
-  \` : \`
+  ` : `
   <div class="grid">
     <div class="card metric">
-      <h2>\${totalGeral.total}</h2>
+      <h2>${totalGeral.total}</h2>
       <p>Total de Presenças</p>
     </div>
     <div class="card metric">
-      <h2>\${valores[valores.length - 1] || 0}</h2>
+      <h2>${valores[valores.length - 1] || 0}</h2>
       <p>Presenças Hoje</p>
     </div>
   </div>
 
   <div class="card">
     <h2>🏫 Gerenciamento de Sala</h2>
-    \${classForm}
-    <ul>\${classesHtml || '<li style="color: var(--text-muted);">Nenhuma sala disponível</li>'}</ul>
+    ${classForm}
+    <ul>${classesHtml || '<li style="color: var(--text-muted);">Nenhuma sala disponível</li>'}</ul>
   </div>
 
   <div class="chart-container">
     <h2>📈 Presenças por dia</h2>
     <canvas id="chart"></canvas>
   </div>
-  \`}
+  `}
 </div>
 
 <script>
