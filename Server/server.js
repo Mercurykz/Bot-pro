@@ -4006,6 +4006,7 @@ app.get('/admin/dashboard', ensureAuthenticated, ensureAdmin, async (req, res) =
   <h2>✨ Mercury Class</h2>
   <ul class="nav-menu">
     <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
+    <li><a href="/admin/users">👥 Usuários & Cargos</a></li>
     <li><a href="/dashboard">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     <li><a href="/subjects">📚 Matérias</a></li>
@@ -4587,6 +4588,105 @@ app.delete('/api/chamadas/historico/:callId', ensureAuthenticated, ensureProfess
   } catch (err) {
     console.error('Erro ao deletar chamada:', err);
     res.status(500).json({ error: 'Erro ao deletar chamada' });
+  }
+});
+
+// ==================== GERENCIAMENTO DE USUÁRIOS ====================
+
+app.get('/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  if (!db) return res.send('Erro: DB não conectado.');
+  try {
+    const users = await db.query('SELECT id, username, role FROM users ORDER BY username ASC');
+    
+    const userRows = users.rows.map(u => `
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 12px;">\${u.username}</td>
+        <td style="padding: 12px;">
+          <form method="POST" action="/admin/users/\${u.id}/role" style="display: flex; gap: 8px; margin: 0;">
+            <select name="role" style="padding: 6px; border-radius: 4px; background: var(--bg-dark); color: var(--text-light); border: 1px solid var(--border-color);">
+              <option value="aluno" \${u.role === 'aluno' ? 'selected' : ''}>Aluno</option>
+              <option value="professor" \${u.role === 'professor' ? 'selected' : ''}>Professor</option>
+              <option value="admin" \${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+            <button type="submit" style="padding: 6px 12px; font-size: 12px; border-radius: 4px;">Salvar</button>
+          </form>
+        </td>
+      </tr>
+    `).join('');
+
+    res.send(\`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercury Class | Gerenciar Usuários</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>\${MERCURY_THEME}</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>✨ Mercury Class</h2>
+  <ul class="nav-menu">
+    <li><a href="/admin/dashboard">⚙️ Painel Admin</a></li>
+    <li><a href="/admin/users">👥 Usuários & Cargos</a></li>
+    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/classes">🏫 Salas de Aula</a></li>
+    <li><a href="/subjects">📚 Matérias</a></li>
+    <li><a href="/chamadas">📋 Chamadas</a></li>
+    <li><a href="/admin/db-check">🧪 Diagnóstico DB</a></li>
+    <li><a href="/admin/db-manager">💾 Gestão de Backup</a></li>
+    <li><a href="/logout">🚪 Sair</a></li>
+  </ul>
+</div>
+
+<div class="content">
+  <div class="topbar">
+    <h1>👥 Gerenciar Usuários e Cargos</h1>
+    <p>Altere os privilégios dos usuários da plataforma</p>
+  </div>
+
+  <div class="card">
+    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 2px solid var(--border-color);">
+          <th style="padding: 12px;">Usuário</th>
+          <th style="padding: 12px;">Cargo</th>
+        </tr>
+      </thead>
+      <tbody>
+        \${userRows}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>
+    \`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao carregar usuários');
+  }
+});
+
+app.post('/admin/users/:id/role', ensureAuthenticated, ensureAdmin, express.urlencoded({ extended: true }), async (req, res) => {
+  if (!db) return res.status(500).send('Erro: DB não conectado.');
+  const userId = req.params.id;
+  const newRole = req.body.role;
+  const validRoles = ['aluno', 'professor', 'admin'];
+
+  if (!validRoles.includes(newRole)) {
+    return res.status(400).send('Cargo inválido.');
+  }
+
+  try {
+    await db.query('UPDATE users SET role = $1 WHERE id = $2', [newRole, userId]);
+    res.redirect('/admin/users');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao atualizar cargo');
   }
 });
 
