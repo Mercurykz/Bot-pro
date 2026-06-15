@@ -1524,30 +1524,122 @@ if (ctx) {
 
     let professorClasses = null;
     let activeRooms = new Set();
+    let taxaMedia = '0.0';
+    let chamadasMes = 0;
+    let totalAlunos = 0;
+    let chamadasCards = '';
+    let recentCallsHtml = '';
+    let alunosRiscoHtml = '';
+    let classForm = '';
+    let classesHtml = '';
 
     if (req.user.role === 'professor') {
       professorClasses = await db.query(`SELECT id, name FROM classes WHERE professor_id = $1 ORDER BY id DESC`, [req.user.id]);
       const activeSessions = await db.query(`SELECT class_id FROM class_sessions WHERE active = true AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)`, [req.user.id]);
       activeRooms = new Set(activeSessions.rows.map(r => r.class_id));
+
+      const alunosQuery = await db.query(`SELECT COUNT(*) as total FROM users WHERE role = 'aluno'`);
+      totalAlunos = alunosQuery.rows[0]?.total || 0;
+
+      const chamadasMesQuery = await db.query(`
+        SELECT COUNT(*) as total 
+        FROM class_sessions 
+        WHERE EXTRACT(MONTH FROM start_time) = EXTRACT(MONTH FROM NOW())
+          AND class_id IN (SELECT id FROM classes WHERE professor_id = $1)
+      `, [req.user.id]);
+      chamadasMes = chamadasMesQuery.rows[0]?.total || 0;
+
+      const taxaQuery = await db.query(`
+        WITH my_sessions AS (
+          SELECT id FROM class_sessions WHERE class_id IN (SELECT id FROM classes WHERE professor_id = $1)
+        ),
+        my_students AS (
+          SELECT COUNT(DISTINCT student_id) as total_students FROM attendances WHERE class_session_id IN (SELECT id FROM my_sessions)
+        ),
+        my_attendances AS (
+          SELECT COUNT(*) as total_att FROM attendances WHERE class_session_id IN (SELECT id FROM my_sessions)
+        ),
+        session_count AS (
+          SELECT COUNT(*) as total_sess FROM my_sessions
+        )
+        SELECT 
+          (my_attendances.total_att::float / NULLIF(my_students.total_students * session_count.total_sess, 0)) * 100 as media
+        FROM my_attendances, my_students, session_count
+      `, [req.user.id]);
+      taxaMedia = taxaQuery.rows[0]?.media ? Number(taxaQuery.rows[0].media).toFixed(1) : '0.0';
+
+      const riskQuery = await db.query(`
+        WITH my_sessions AS (
+          SELECT id FROM class_sessions WHERE class_id IN (SELECT id FROM classes WHERE professor_id = $1)
+        ),
+        student_att AS (
+          SELECT student_id, COUNT(*) as presencas 
+          FROM attendances 
+          WHERE class_session_id IN (SELECT id FROM my_sessions)
+          GROUP BY student_id
+        ),
+        session_count AS (
+          SELECT COUNT(*) as total_sess FROM my_sessions
+        )
+        SELECT u.username, 
+               (sa.presencas::float / NULLIF(sc.total_sess, 0)) * 100 as freq
+        FROM student_att sa
+        JOIN users u ON u.id = sa.student_id
+        CROSS JOIN session_count sc
+        WHERE (sa.presencas::float / NULLIF(sc.total_sess, 0)) < 0.75
+        ORDER BY freq ASC
+        LIMIT 5
+      `, [req.user.id]);
+      
+      alunosRiscoHtml = riskQuery.rows.map(r => `
+        <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <span>${r.username}</span>
+          <strong style="color: var(--danger);">${Number(r.freq).toFixed(1)}%</strong>
+        </div>
+      `).join('');
+
+      chamadasCards = professorClasses.rows.map(c => `
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <h3 style="margin-bottom: 4px; font-size: 15px;">🏫 ${c.name}</h3>
+            <p style="color: var(--text-muted); font-size: 12px;">${activeRooms.has(c.id) ? '🟢 Em andamento' : '⚪ Pronta para iniciar'}</p>
+          </div>
+          ${activeRooms.has(c.id) 
+            ? `<a href="/class/${c.id}" style="background: var(--success); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 12px;">Ver Sala</a>`
+            : `<form method="POST" action="/class/start" style="margin:0;"><input type="hidden" name="name" value="${c.name}"><button type="submit" style="background: var(--primary); border:none; color:white; padding: 8px 16px !important; border-radius: 8px; font-weight: 600; font-size: 12px !important; cursor:pointer;">Iniciar Chamada</button></form>`
+          }
+        </div>
+      `).join('');
+
+      const recentCallsQuery = await db.query(`
+        SELECT cs.id, c.name, cs.start_time, 
+               (SELECT COUNT(*) FROM attendances a WHERE a.class_session_id = cs.id) as presentes
+        FROM class_sessions cs
+        JOIN classes c ON c.id = cs.class_id
+        WHERE c.professor_id = $1 AND cs.active = false
+        ORDER BY cs.start_time DESC
+        LIMIT 3
+      `, [req.user.id]);
+
+      recentCallsHtml = recentCallsQuery.rows.map(rc => `
+        <div style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div style="font-size: 12px; color: var(--text-muted);">${new Date(rc.start_time).toLocaleDateString('pt-BR')} - ${rc.name}</div>
+          <div style="color: var(--success); font-weight: 600; font-size: 13px;">✅ ${rc.presentes} presentes</div>
+        </div>
+      `).join('');
+    } else {
+      const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
+        \`SELECT c.id, c.name, u.username as professor_name, MAX(s.start_time) as last_start_time
+         FROM class_sessions s
+         JOIN classes c ON c.id = s.class_id
+         JOIN users u ON u.id = c.professor_id
+         WHERE s.active = true
+         GROUP BY c.id, c.name, u.username
+         ORDER BY last_start_time DESC\`)
+        : null;
+      classesHtml = (classesDisponiveis?.rows || []).map(c => \`<li>\${c.name} (Prof. \${c.professor_name}) <a href="/class/\${c.id}">Entrar</a></li>\`).join('');
+      classForm = '';
     }
-
-    const classesDisponiveis = req.user.role === 'aluno' ? await db.query(
-      `SELECT c.id, c.name, u.username as professor_name, MAX(s.start_time) as last_start_time
-       FROM class_sessions s
-       JOIN classes c ON c.id = s.class_id
-       JOIN users u ON u.id = c.professor_id
-       WHERE s.active = true
-       GROUP BY c.id, c.name, u.username
-       ORDER BY last_start_time DESC`)
-      : null;
-
-    const classesHtml = req.user.role === 'professor'
-      ? professorClasses.rows.map(c => `<li><a href="/class/${c.id}">${c.name}</a> - ${activeRooms.has(c.id) ? 'Em chamada' : 'Disponível'}</li>`).join('')
-      : (classesDisponiveis?.rows || []).map(c => `<li>${c.name} (Prof. ${c.professor_name}) <a href="/class/${c.id}">Entrar</a></li>`).join('');
-
-    const classForm = req.user.role === 'professor'
-      ? `<form method="POST" action="/class/start"> <input name="name" required placeholder="Nome da sala" /> <button>Iniciar chamada</button> </form>`
-      : '';
 
     res.send(`
 <!DOCTYPE html>
@@ -1601,7 +1693,7 @@ if (ctx) {
   </script>
 
   <ul class="nav-menu">
-    <li><a href="/dashboard">📊 Dashboard</a></li>
+    <li><a href="/dashboard" class="active">📊 Dashboard</a></li>
     <li><a href="/classes">🏫 Salas de Aula</a></li>
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/subjects">📚 Matérias</a></li>' : ''}
     ${req.user.role === 'professor' || req.user.role === 'admin' ? '<li><a href="/chamadas">📋 Chamadas</a></li>' : ''}
@@ -1615,37 +1707,80 @@ if (ctx) {
 
   <div class="topbar">
     <div>
-      <h1>Bem-vindo, ${req.user.username}!</h1>
-      <p style="color: var(--text-muted); margin-top: 5px;">Gerencie suas salas e presenças facilmente</p>
+      <h1>Bom dia, ${req.user.role === 'professor' ? 'Professor(a) ' : ''}${req.user.username}!</h1>
+      <p style="color: var(--text-muted); margin-top: 5px;">${req.user.role === 'professor' ? \`Hoje você possui \${activeRooms.size} salas ativas e \${chamadasMes} presenças registradas no mês.\` : 'Gerencie o sistema de presenças'}</p>
     </div>
     <button class="theme-btn" onclick="toggleTheme()">🌙</button>
   </div>
 
-  <div class="grid">
+  ${req.user.role === 'professor' ? \`
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important; margin-bottom: 24px;">
+    <div class="card metric" style="border-top: 4px solid var(--primary) !important;">
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">🏫 \${activeRooms.size}</h2>
+      <p style="color: var(--text-muted);">Salas Ativas</p>
+    </div>
+    <div class="card metric" style="border-top: 4px solid #8b5cf6 !important;">
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">👨‍🎓 \${totalAlunos}</h2>
+      <p style="color: var(--text-muted);">Alunos na Plataforma</p>
+    </div>
+    <div class="card metric" style="border-top: 4px solid #10b981 !important;">
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📊 \${taxaMedia}%</h2>
+      <p style="color: var(--text-muted);">Frequência Média</p>
+    </div>
+    <div class="card metric" style="border-top: 4px solid #f59e0b !important;">
+      <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">📋 \${chamadasMes}</h2>
+      <p style="color: var(--text-muted);">Chamadas no Mês</p>
+    </div>
+  </div>
 
+  <div class="layout" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <div class="card" style="margin: 0 !important;">
+        <h2 style="margin-bottom: 16px;">⚡ Chamada Rápida</h2>
+        \${chamadasCards || '<p style="color:var(--text-muted);">Nenhuma sala cadastrada. Crie uma nova matéria.</p>'}
+      </div>
+
+      <div class="chart-container" style="margin: 0 !important;">
+        <h2>📈 Presenças por dia (Geral)</h2>
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <div class="card" style="margin: 0 !important; border-top: 4px solid #f59e0b !important;">
+        <h2 style="margin-bottom: 16px; color: #f59e0b;">⚠️ Alunos em Risco</h2>
+        \${alunosRiscoHtml || '<p style="color:var(--text-muted); font-size:13px;">Todos os alunos estão com boa frequência.</p>'}
+      </div>
+
+      <div class="card" style="margin: 0 !important;">
+        <h2 style="margin-bottom: 16px;">🧾 Últimas Chamadas</h2>
+        \${recentCallsHtml || '<p style="color:var(--text-muted); font-size:13px;">Nenhuma chamada recente.</p>'}
+      </div>
+    </div>
+  </div>
+  \` : \`
+  <div class="grid">
     <div class="card metric">
-      <h2>${totalGeral.total}</h2>
+      <h2>\${totalGeral.total}</h2>
       <p>Total de Presenças</p>
     </div>
-
     <div class="card metric">
-      <h2>${valores[valores.length - 1] || 0}</h2>
+      <h2>\${valores[valores.length - 1] || 0}</h2>
       <p>Presenças Hoje</p>
     </div>
-
   </div>
 
   <div class="card">
     <h2>🏫 Gerenciamento de Sala</h2>
-    ${classForm}
-    <ul>${classesHtml || '<li style="color: var(--text-muted);">Nenhuma sala disponível</li>'}</ul>
+    \${classForm}
+    <ul>\${classesHtml || '<li style="color: var(--text-muted);">Nenhuma sala disponível</li>'}</ul>
   </div>
 
   <div class="chart-container">
     <h2>📈 Presenças por dia</h2>
     <canvas id="chart"></canvas>
   </div>
-
+  \`}
 </div>
 
 <script>
