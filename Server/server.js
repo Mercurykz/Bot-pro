@@ -1321,7 +1321,7 @@ app.get('/dashboard', async (req, res) => {
 <body>
   <div class="sidebar">
     <h2>✨ Mercury Class</h2>
-    <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div class="user-profile" onclick="if(typeof openElevateModal === 'function') openElevateModal();" style="cursor: pointer; margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
       <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
       <div>
         <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1329,6 +1329,30 @@ app.get('/dashboard', async (req, res) => {
         </span>
       </div>
     </div>
+    <script>
+      if(typeof openElevateModal !== 'function') {
+        window.openElevateModal = function() {
+          if(document.getElementById('elevate-modal')) return document.getElementById('elevate-modal').style.display = 'flex';
+          const modal = document.createElement('div');
+          modal.id = 'elevate-modal';
+          modal.style = 'position: fixed; top:0; left:0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(4px);';
+          modal.innerHTML = \`
+            <div style="background: var(--bg-dark, #1f2937); padding: 24px; border-radius: 12px; width: 320px; border: 1px solid var(--border-color, #374151); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+              <h3 style="margin-top:0; color: white; margin-bottom: 16px; font-family: Poppins, sans-serif;">🔒 Acesso Admin</h3>
+              <form method="POST" action="/admin/elevate" style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="text" name="elevate_user" placeholder="Usuário" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+                <input type="password" name="elevate_pass" placeholder="Senha" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                  <button type="button" onclick="document.getElementById('elevate-modal').style.display='none'" style="flex:1; padding: 10px; border-radius: 6px; background: transparent; border: 1px solid #4b5563; color: white; cursor: pointer;">Cancelar</button>
+                  <button type="submit" style="flex:1; padding: 10px; border-radius: 6px; background: #6366f1; border: none; color: white; cursor: pointer; font-weight: bold;">Entrar</button>
+                </div>
+              </form>
+            </div>
+          \`;
+          document.body.appendChild(modal);
+        };
+      }
+    </script>
     <ul class="nav-menu">
       <li><a href="/dashboard">📊 Minha Frequência</a></li>
       <li><a href="/classes">🏫 Salas de Aula</a></li>
@@ -1485,7 +1509,7 @@ if (ctx) {
 <div class="sidebar">
   <h2>✨ Mercury Class</h2>
   
-  <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+  <div class="user-profile" onclick="if(typeof openElevateModal === 'function') openElevateModal();" style="cursor: pointer; margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
     <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
     <div>
       <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1493,6 +1517,30 @@ if (ctx) {
       </span>
     </div>
   </div>
+  <script>
+    if(typeof openElevateModal !== 'function') {
+      window.openElevateModal = function() {
+        if(document.getElementById('elevate-modal')) return document.getElementById('elevate-modal').style.display = 'flex';
+        const modal = document.createElement('div');
+        modal.id = 'elevate-modal';
+        modal.style = 'position: fixed; top:0; left:0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(4px);';
+        modal.innerHTML = \`
+          <div style="background: var(--bg-dark, #1f2937); padding: 24px; border-radius: 12px; width: 320px; border: 1px solid var(--border-color, #374151); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <h3 style="margin-top:0; color: white; margin-bottom: 16px; font-family: Poppins, sans-serif;">🔒 Acesso Admin</h3>
+            <form method="POST" action="/admin/elevate" style="display: flex; flex-direction: column; gap: 12px;">
+              <input type="text" name="elevate_user" placeholder="Usuário" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+              <input type="password" name="elevate_pass" placeholder="Senha" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+              <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="button" onclick="document.getElementById('elevate-modal').style.display='none'" style="flex:1; padding: 10px; border-radius: 6px; background: transparent; border: 1px solid #4b5563; color: white; cursor: pointer;">Cancelar</button>
+                <button type="submit" style="flex:1; padding: 10px; border-radius: 6px; background: #6366f1; border: none; color: white; cursor: pointer; font-weight: bold;">Entrar</button>
+              </div>
+            </form>
+          </div>
+        \`;
+        document.body.appendChild(modal);
+      };
+    }
+  </script>
 
   <ul class="nav-menu">
     <li><a href="/dashboard">📊 Dashboard</a></li>
@@ -1722,7 +1770,7 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
   <div class="sidebar">
     <h2>✨ Mercury Class</h2>
 
-    <div class="user-profile" style="margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div class="user-profile" onclick="if(typeof openElevateModal === 'function') openElevateModal();" style="cursor: pointer; margin-bottom: 24px; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
       <p style="font-weight: 600; font-size: 15px; margin: 0;">${req.user.username}</p>
       <div>
         <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--primary); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1730,6 +1778,30 @@ app.get('/minhas-materias', ensureAuthenticated, ensureAluno, async (req, res) =
         </span>
       </div>
     </div>
+    <script>
+      if(typeof openElevateModal !== 'function') {
+        window.openElevateModal = function() {
+          if(document.getElementById('elevate-modal')) return document.getElementById('elevate-modal').style.display = 'flex';
+          const modal = document.createElement('div');
+          modal.id = 'elevate-modal';
+          modal.style = 'position: fixed; top:0; left:0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(4px);';
+          modal.innerHTML = \`
+            <div style="background: var(--bg-dark, #1f2937); padding: 24px; border-radius: 12px; width: 320px; border: 1px solid var(--border-color, #374151); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+              <h3 style="margin-top:0; color: white; margin-bottom: 16px; font-family: Poppins, sans-serif;">🔒 Acesso Admin</h3>
+              <form method="POST" action="/admin/elevate" style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="text" name="elevate_user" placeholder="Usuário" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+                <input type="password" name="elevate_pass" placeholder="Senha" required style="padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: white; font-family: inherit;">
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                  <button type="button" onclick="document.getElementById('elevate-modal').style.display='none'" style="flex:1; padding: 10px; border-radius: 6px; background: transparent; border: 1px solid #4b5563; color: white; cursor: pointer;">Cancelar</button>
+                  <button type="submit" style="flex:1; padding: 10px; border-radius: 6px; background: #6366f1; border: none; color: white; cursor: pointer; font-weight: bold;">Entrar</button>
+                </div>
+              </form>
+            </div>
+          \`;
+          document.body.appendChild(modal);
+        };
+      }
+    </script>
 
     <ul class="nav-menu">
       <li><a href="/dashboard">📊 Dashboard</a></li>
@@ -4688,6 +4760,33 @@ app.post('/admin/users/:id/role', ensureAuthenticated, ensureAdmin, express.urle
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro ao atualizar cargo');
+  }
+});
+
+// ==================== ELEVATE MODAL ====================
+
+app.post('/admin/elevate', ensureAuthenticated, express.urlencoded({ extended: true }), async (req, res) => {
+  const { elevate_user, elevate_pass } = req.body;
+  const validUser = process.env.ELEVATE_USER || 'admin';
+  const validPass = process.env.ELEVATE_PASS || 'mercury123';
+
+  if (elevate_user === validUser && elevate_pass === validPass) {
+    try {
+      if (db) {
+        await db.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [req.user.id]);
+      }
+      if (req.session && req.session.passport && req.session.passport.user) {
+        req.session.passport.user.role = 'admin';
+        req.session.save(() => res.redirect('/admin/dashboard'));
+      } else {
+        res.redirect('/admin/dashboard');
+      }
+    } catch (err) {
+      console.error('Erro ao elevar:', err);
+      res.send('<script>alert("Erro no banco de dados ao atualizar cargo!"); window.location.href="/dashboard";</script>');
+    }
+  } else {
+    res.send('<script>alert("Usuário ou senha incorretos!"); window.location.href="/dashboard";</script>');
   }
 });
 
