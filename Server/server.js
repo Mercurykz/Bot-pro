@@ -1285,10 +1285,10 @@ app.get('/dashboard', async (req, res) => {
         const key = String(s.class_id);
         const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
         const isActive = selectedRow && selectedRow.class_id === s.class_id;
-        return `<li>
-          <a href="/dashboard?class=${key}" class="${isActive ? 'active-subject' : ''}">
-            <span>🏫 ${s.class_name}</span>
-            <strong>${pct}%</strong>
+        return `<li style="padding: 0 !important; overflow: hidden; border-radius: 12px !important; background: ${isActive ? 'rgba(99, 102, 241, 0.15)' : 'rgba(5, 7, 12, 0.2)'} !important; border: 1px solid ${isActive ? 'var(--primary)' : 'var(--border-color)'} !important; transition: all 0.2s;">
+          <a href="/dashboard?class=${key}" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; text-decoration: none; color: ${isActive ? 'white' : 'var(--text-muted)'}; width: 100%; transition: background 0.2s;">
+            <span style="font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; color: ${isActive ? 'white' : 'var(--text-light)'};">🏫 ${s.class_name}</span>
+            <strong style="background: ${isActive ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: ${isActive ? 'white' : 'var(--text-light)'};">${pct}%</strong>
           </a>
         </li>`;
       }).join('');
