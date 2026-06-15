@@ -1264,48 +1264,85 @@ app.get('/dashboard', async (req, res) => {
       const selectedRow = classRows.find(s => String(s.class_id) === selectedParam) || classRows[0] || null;
 
       let historySql = `
+        WITH my_classes AS (
+          SELECT DISTINCT cs.class_id
+          FROM attendances a
+          JOIN class_sessions cs ON cs.id = a.class_session_id
+          WHERE a.student_id = $1
+        )
         SELECT
           c.name AS class_name,
           cs.start_time,
           a.login_at
-        FROM attendances a
-        JOIN class_sessions cs ON cs.id = a.class_session_id
+        FROM class_sessions cs
         JOIN classes c ON c.id = cs.class_id
-        WHERE a.student_id = $1
+        JOIN my_classes mc ON mc.class_id = cs.class_id
+        LEFT JOIN attendances a ON a.class_session_id = cs.id AND a.student_id = $1
       `;
       const historyParams = [req.user.id];
       if (selectedRow) {
         historyParams.push(selectedRow.class_id);
-        historySql += ` AND c.id = $2`;
+        historySql += ` WHERE c.id = $2`;
       }
       historySql += ` ORDER BY cs.start_time DESC LIMIT 50`;
       const history = await db.query(historySql, historyParams);
 
       const classMenu = classRows.map(s => {
         const key = String(s.class_id);
-        const pct = s.total_sessions > 0 ? ((s.attended_sessions / s.total_sessions) * 100).toFixed(1) : '0.0';
+        const freq = s.total_sessions > 0 ? (s.attended_sessions / s.total_sessions) * 100 : 0;
+        const pct = freq.toFixed(1);
         const isActive = selectedRow && selectedRow.class_id === s.class_id;
+        
+        let colorLight = freq >= 75 ? '#10b981' : (freq >= 50 ? '#f59e0b' : '#ef4444');
+        let iconFreq = freq >= 75 ? '🟢' : (freq >= 50 ? '🟡' : '🔴');
+        
         return `<li style="padding: 0 !important; overflow: hidden; border-radius: 12px !important; background: ${isActive ? 'rgba(99, 102, 241, 0.15)' : 'rgba(5, 7, 12, 0.2)'} !important; border: 1px solid ${isActive ? 'var(--primary)' : 'var(--border-color)'} !important; transition: all 0.2s;">
           <a href="/dashboard?class=${key}" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; text-decoration: none; color: ${isActive ? 'white' : 'var(--text-muted)'}; width: 100%; transition: background 0.2s;">
             <span style="font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; color: ${isActive ? 'white' : 'var(--text-light)'};">🏫 ${s.class_name}</span>
-            <strong style="background: ${isActive ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: ${isActive ? 'white' : 'var(--text-light)'};">${pct}%</strong>
+            <strong style="background: ${isActive ? colorLight : 'rgba(255,255,255,0.08)'}; color: ${isActive ? 'white' : colorLight}; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${iconFreq} ${pct}%</strong>
           </a>
         </li>`;
       }).join('');
+
+      let streak = 0;
+      let maxStreak = 0;
+      let currentStreak = 0;
+      const sortedHistory = [...history.rows].sort((a,b) => new Date(a.start_time) - new Date(b.start_time));
+      sortedHistory.forEach(h => {
+        if (h.login_at) {
+          currentStreak++;
+          if (currentStreak > maxStreak) maxStreak = currentStreak;
+        } else {
+          currentStreak = 0;
+        }
+      });
+      streak = currentStreak;
+
+      const faltamAulas = selectedRow ? Math.max(0, Math.ceil((0.75 * selectedRow.total_sessions) - selectedRow.attended_sessions)) : 0;
+      const overallColor = overallFrequency >= 75 ? '#10b981' : (overallFrequency >= 50 ? '#f59e0b' : '#ef4444');
+      const overallIcon = overallFrequency >= 75 ? '🏆' : (overallFrequency >= 50 ? '⚠️' : '🚨');
 
       const selectedPct = selectedRow && selectedRow.total_sessions > 0
         ? ((selectedRow.attended_sessions / selectedRow.total_sessions) * 100).toFixed(1)
         : '0.0';
 
-      const historyList = history.rows.map(h => `<li>
-        <div>
-          <strong>${h.class_name}</strong>
-        </div>
-        <div style="text-align:right; color: var(--text-muted); font-size: 12px;">
-          <div>🕒 Aula: ${new Date(h.start_time).toLocaleString('pt-BR')}</div>
-          <div>✅ Presença: ${new Date(h.login_at).toLocaleString('pt-BR')}</div>
-        </div>
-      </li>`).join('');
+      const historyList = history.rows.map(h => {
+        const isPresent = !!h.login_at;
+        const icon = isPresent ? '✅' : '❌';
+        const statusText = isPresent ? 'Presente' : 'Falta';
+        const statusColor = isPresent ? 'var(--success)' : 'var(--danger)';
+        const dateText = new Date(h.start_time).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        
+        return `<li style="padding: 12px 16px !important; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 6px;">📅 ${dateText}</span>
+            <strong style="font-size: 13px;">${h.class_name}</strong>
+          </div>
+          <div style="color: ${statusColor}; font-size: 12px; font-weight: 700; background: rgba(${isPresent ? '16,185,129':'239,68,68'}, 0.1); padding: 4px 10px; border-radius: 12px;">
+            ${icon} ${statusText}
+          </div>
+        </li>`;
+      }).join('');
 
       return res.send(`
 <!DOCTYPE html>
@@ -1369,19 +1406,30 @@ app.get('/dashboard', async (req, res) => {
       <button class="theme-btn" onclick="toggleTheme()">🌙</button>
     </div>
 
-    <div class="grid">
-      <div class="card metric">
-        <h2>${totalAttended}</h2>
-        <p>Chamadas com Presença</p>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;">
+      <div class="card metric" style="border-top: 4px solid var(--primary) !important;">
+        <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">👨‍🏫 ${totalAttended}</h2>
+        <p style="color: var(--text-muted);">Presenças Totais</p>
       </div>
-      <div class="card metric">
-        <h2>${overallFrequency.toFixed(1)}%</h2>
-        <p>Frequência Geral</p>
+      <div class="card metric" style="border-top: 4px solid ${overallColor} !important;">
+        <h2 style="font-size: 32px !important; margin-bottom: 8px !important; background: none !important; -webkit-text-fill-color: ${overallColor} !important;">${overallIcon} ${overallFrequency.toFixed(1)}%</h2>
+        <p style="color: var(--text-muted);">Frequência Geral</p>
       </div>
-      <div class="card metric">
-        <h2>${selectedPct}%</h2>
-        <p>Frequência na Sala Selecionada</p>
+      <div class="card metric" style="border-top: 4px solid #8b5cf6 !important;">
+        <h2 style="font-size: 32px !important; margin-bottom: 8px !important; background: none !important; -webkit-text-fill-color: #8b5cf6 !important;">🔥 ${streak}</h2>
+        <p style="color: var(--text-muted);">Sequência Atual</p>
       </div>
+      ${faltamAulas > 0 ? `
+      <div class="card metric" style="border-top: 4px solid #f59e0b !important; background: rgba(245, 158, 11, 0.05) !important;">
+        <h2 style="font-size: 18px !important; margin-bottom: 8px !important; background: none !important; -webkit-text-fill-color: #f59e0b !important; display:flex; align-items:center; gap:8px;">⚠️ Alerta de Risco</h2>
+        <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5;">Você precisa comparecer a mais <strong>${faltamAulas}</strong> aula(s) de <strong>${selectedRow.class_name}</strong> para atingir a meta de 75%.</p>
+      </div>
+      ` : `
+      <div class="card metric" style="border-top: 4px solid #10b981 !important; background: rgba(16, 185, 129, 0.05) !important;">
+        <h2 style="font-size: 18px !important; margin-bottom: 8px !important; background: none !important; -webkit-text-fill-color: #10b981 !important; display:flex; align-items:center; gap:8px;">🎯 Meta Atingida</h2>
+        <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5;">Parabéns! Sua frequência na sala <strong>${selectedRow ? selectedRow.class_name : 'selecionada'}</strong> está excelente e acima da média (75%).</p>
+      </div>
+      `}
     </div>
 
     <div class="layout">
@@ -1425,14 +1473,24 @@ if (ctx) {
         label: 'Frequência (%)',
         data: dataPct,
         borderRadius: 8,
-        backgroundColor: '#6366f1'
+        backgroundColor: dataPct.map(v => v >= 75 ? '#10b981' : (v >= 50 ? '#f59e0b' : '#ef4444'))
       }]
     },
     options: {
       responsive: true,
-      plugins: { legend: { display: false } },
+      plugins: { 
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return ' ' + context.parsed.y + '% de Frequência';
+            }
+          }
+        }
+      },
       scales: {
-        y: { beginAtZero: true, max: 100 }
+        y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } },
+        x: { grid: { display: false } }
       }
     }
   });
