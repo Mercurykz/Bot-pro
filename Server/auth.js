@@ -37,55 +37,50 @@ passport.use(new DiscordStrategy({
     try {
       console.log('🔐 Discord auth initiated for user:', profile.username, 'ID:', profile.id);
       
-      // Buscar cargos do usuário na guilda específica usando token do bot (endpoint de guild member)
+      let role = 'aluno'; // default
+
+      // Tentar buscar cargos do usuário na guilda específica
       const guildId = process.env.GUILD_ID;
       const botToken = process.env.BOT_TOKEN;
 
-      if (!botToken) {
-        console.error('⚠️ BOT_TOKEN não definido no .env');
-        return done(null, { ...profile, role: 'aluno' });
-      }
+      if (botToken) {
+        try {
+          const response = await fetch(`https://discord.com/api/guilds/${guildId}/members/${profile.id}`, {
+            headers: { Authorization: `Bot ${botToken}` }
+          });
 
-      const response = await fetch(`https://discord.com/api/guilds/${guildId}/members/${profile.id}`, {
-        headers: {
-          Authorization: `Bot ${botToken}`
+          if (response.ok) {
+            const memberData = await response.json();
+            const roles = memberData.roles || [];
+
+            const adminRoleId = (process.env.ADMIN_ROLE_ID || '').trim();
+            const professorRoleId = (process.env.PROFESSOR_ROLE_ID || '').trim();
+            const alunoRoleId = (process.env.ALUNO_ROLE_ID || '').trim();
+
+            const isGuildOwnerOrAdmin = (profile.guilds || []).some(g => g.id === guildId && (g.owner === true || (g.permissions & 0x8) === 0x8));
+            
+            if (profile.id === '329759368383856641' || isGuildOwnerOrAdmin) {
+              role = 'admin';
+            } else if (adminRoleId && roles.includes(adminRoleId)) {
+              role = 'admin';
+            } else if (professorRoleId && roles.includes(professorRoleId)) {
+              role = 'professor';
+            } else if (alunoRoleId && roles.includes(alunoRoleId)) {
+              role = 'aluno';
+            }
+          } else {
+            console.error('⚠️ Erro ao buscar membro da guilda (Status):', response.status);
+          }
+        } catch (fetchErr) {
+          console.error('⚠️ Exceção ao buscar cargos no Discord:', fetchErr.message);
         }
-      });
-
-      if (!response.ok) {
-        console.error('⚠️ Erro ao buscar membro da guilda:', response.status, response.statusText);
-        return done(null, { ...profile, role: 'aluno' }); // fallback
-      }
-
-      const memberData = await response.json();
-      const roles = memberData.roles || [];
-
-      // Definir role baseado nos cargos
-      const adminRoleId = (process.env.ADMIN_ROLE_ID || '').trim();
-      const professorRoleId = (process.env.PROFESSOR_ROLE_ID || '').trim();
-      const alunoRoleId = (process.env.ALUNO_ROLE_ID || '').trim();
-
-      console.log('🔍 Discord roles for user:', roles);
-      console.log('🔍 ADMIN_ROLE_ID:', adminRoleId, 'PROFESSOR_ROLE_ID:', professorRoleId, 'ALUNO_ROLE_ID:', alunoRoleId);
-
-      let role = 'aluno'; // default
-
-      // 👑 Admin Overrides: Dono do Servidor, Admin Discord ou ID específico do Ygor
-      const isGuildOwnerOrAdmin = (profile.guilds || []).some(g => g.id === guildId && (g.owner === true || (g.permissions & 0x8) === 0x8));
-      
-      if (profile.id === '329759368383856641' || isGuildOwnerOrAdmin) {
-        role = 'admin';
-      } else if (adminRoleId && roles.includes(adminRoleId)) {
-        role = 'admin';
-      } else if (professorRoleId && roles.includes(professorRoleId)) {
-        role = 'professor';
-      } else if (alunoRoleId && roles.includes(alunoRoleId)) {
-        role = 'aluno';
+      } else {
+        console.error('⚠️ BOT_TOKEN não definido no .env');
       }
 
       console.log('✅ User role assigned:', role);
 
-      // Atualizar ou inserir no DB
+      // Atualizar ou inserir no DB SEMPRE
       if (db) {
         const existingUser = await db.query('SELECT role FROM users WHERE id = $1', [profile.id]);
         if (existingUser.rowCount > 0) {
@@ -93,7 +88,7 @@ passport.use(new DiscordStrategy({
           role = existingUser.rows[0].role;
           await db.query(`UPDATE users SET username = $1 WHERE id = $2`, [profile.username, profile.id]);
         } else {
-          // Insere novo usuário com o cargo puxado do Discord
+          // Insere novo usuário com o cargo (default ou puxado do Discord)
           await db.query(`INSERT INTO users (id, username, role) VALUES ($1, $2, $3)`, [profile.id, profile.username, role]);
         }
       }
