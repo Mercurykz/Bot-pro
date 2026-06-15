@@ -1408,7 +1408,7 @@ app.get('/dashboard', async (req, res) => {
 
     <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;">
       <div class="card metric" style="border-top: 4px solid var(--primary) !important;">
-        <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">👨‍🏫 ${totalAttended}</h2>
+        <h2 style="font-size: 32px !important; margin-bottom: 8px !important;">✅ ${totalAttended}</h2>
         <p style="color: var(--text-muted);">Presenças Totais</p>
       </div>
       <div class="card metric" style="border-top: 4px solid ${overallColor} !important;">
